@@ -32,7 +32,7 @@ export function DropZone({ onFile, onSample }: DropZoneProps) {
         type="file"
         accept={ACCEPT_ATTR}
         className="visually-hidden"
-        aria-label="Choose a song from your files"
+        aria-label="Song file"
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) onFile(file);
