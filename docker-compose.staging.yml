@@ -1,0 +1,31 @@
+name: needle-drop-learn-riffs-from-real-records-wi-staging
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: needle-drop-learn-riffs-from-real-records-wi-staging-web
+    expose:
+      - "80"
+    environment:
+      # Optional observability. Empty by default; the app runs fine without them.
+      SENTRY_DSN: "${SENTRY_DSN:-}"
+      UMAMI_WEBSITE_ID: "${UMAMI_WEBSITE_ID:-}"
+      UMAMI_URL: "${UMAMI_URL:-}"
+      # Staging-only demo flag, reserved for a later EPIC's seed path.
+      SEED_DEMO: "1"
+    networks:
+      - default
+      - staging
+    mem_limit: 512m
+    oom_score_adj: 800
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+networks:
+  staging:
+    external: true
+    name: factory-staging-net
