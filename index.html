@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      name="description"
+      content="Loop two bars of a record you own and hear them play back cleanly. Your file stays on your machine."
+    />
+    <title>Needle Drop</title>
+    <!-- Runtime config is written into the container at start. In dev it is a placeholder. -->
+    <script src="/config.js"></script>
+    <style>
+      /* Critical app shell: real, branded content before the bundle parses. */
+      :root {
+        color-scheme: dark;
+        --bg: #0e1116;
+        --surface: #171b22;
+        --text: #f3f5f8;
+        --muted: #a7b0be;
+        --accent: #52d0b0;
+        --accent-ink: #06231d;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      #shell {
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        padding: 1.5rem;
+        text-align: center;
+      }
+      #shell .brand {
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        font-size: 1.1rem;
+        color: var(--accent);
+      }
+      #shell h1 {
+        font-size: 1.6rem;
+        line-height: 1.2;
+        margin: 0;
+        max-width: 22ch;
+      }
+      #shell p { color: var(--muted); margin: 0; max-width: 30ch; }
+      #shell .cta {
+        margin-top: 0.5rem;
+        background: var(--accent);
+        color: var(--accent-ink);
+        border-radius: 999px;
+        padding: 0.75rem 1.25rem;
+        font-weight: 600;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div id="shell">
+        <div class="brand">Needle Drop</div>
+        <h1>Drop in a song to start</h1>
+        <p>Pick a track from your own files. It stays on your machine.</p>
+        <div class="cta">Choose a song</div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
