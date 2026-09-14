@@ -6,4 +6,9 @@ export default defineConfig({
   build: {
     target: "es2021",
   },
+  worker: {
+    // The transcription worker dynamically imports tfjs and Basic Pitch, which
+    // is code-splitting; ES module workers support that (the default iife does not).
+    format: "es",
+  },
 });
