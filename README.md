@@ -5,9 +5,15 @@ ear. Drop in a song from your own files, loop the two bars you are chasing, and
 slow them down without the audio ever leaving your machine. Everything runs in
 the browser, so your music stays on your computer.
 
-This repository is the Loop Room: load a local audio file, see its waveform,
-drag out a loop region, snap it to a number of bars at a tempo you set, adjust
-the speed between 50% and 100%, and loop it gaplessly.
+Load a local audio file, see its waveform, drag out a loop region, snap it to a
+number of bars at a tempo you set, adjust the speed between 50% and 100%, and
+loop it gaplessly.
+
+Then press "Find the notes" to turn that loop into a target chart. Needle Drop
+reads the loop into a note timeline you can play back on its own or over the
+record, and edit note by note until you agree it is the phrase. It reads one
+note at a time, so it works best on single-note riffs and basslines. The
+transcription runs entirely in your browser.
 
 ## Run it
 
@@ -52,12 +58,22 @@ so for local use prefer the `docker run` command above.
   so the loop seam is sample-accurate and click-free.
 - Slowing down uses playback rate, so pitch drops as the loop slows. That is the
   honest behavior for now.
+- "Find the notes" transcribes the loop with the
+  [Basic Pitch](https://github.com/spotify/basic-pitch) model running in a Web
+  Worker, so the loop controls stay responsive. The model weights are served
+  from the app's own origin, so no audio and no model request leaves your
+  machine. The result is reduced to one note per moment, and a region with no
+  clear pitch shows a designed state instead of a guessed note.
 
 ## Contribute
 
 - App code is in `src/`: `audio/` holds the decode, waveform peaks, timing math,
-  and loop player. `components/` holds the Loop Room UI and its empty, loading,
-  and error states. `observability/` wires optional Sentry and Umami.
+  loop player, and the transcription path (the `transcribe` worker, the
+  monophonic reduction, pitch helpers, and note synth). `components/` holds the
+  Loop Room UI, the chart panel and piano roll, and the empty, loading, error,
+  transcribing, and no-clear-pitch states. `observability/` wires optional
+  Sentry and Umami. The Basic Pitch model weights live in
+  `public/models/basic-pitch/` so they are served from the app's own origin.
 - Run the unit and component tests (Vitest):
 
   ```bash
