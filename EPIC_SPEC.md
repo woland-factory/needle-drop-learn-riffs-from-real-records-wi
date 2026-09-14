@@ -1,4 +1,4 @@
-# EPIC SPEC — Target chart: transcribe, audition, edit
+# EPIC SPEC — Mic verdict: call-and-response grading and accuracy fixtures
 
 ## Quality differentiator (read first)
 
@@ -6,25 +6,28 @@
 verdict the player believes, on their own records, where every competitor either
 never listens or listens only to its own catalog.
 
-**What it demands of THIS EPIC:** this is the EPIC where the differentiator is
-won or lost. The verdict in EPIC 3 grades the player against *this chart*. If the
-target the machine derived is wrong, no honest verdict is possible: a false
-"wrong note" at the moment of triumph destroys the product. So this EPIC's whole
-job is to make the target **believable before practice** by making it
-**auditionable and editable**. Concretely:
+**What it demands of THIS EPIC:** this is the EPIC where the differentiator
+ships. EPIC 2 made the target believable before practice (auditionable,
+editable). This EPIC delivers the verdict itself. The whole product lives or
+dies on one moment: the player finishes a pass and the machine tells them,
+honestly, whether they matched the record. Two failures are fatal and this spec
+guards against both:
 
-1. **The chart must be honestly derived and never faked.** A region with no clear
-   pitch shows a designed "pick a clearer part" state. It NEVER presents zero
-   notes, or a guessed note, as a successful transcription. Silence graded as
-   success is the exact failure that kills trust.
-2. **The player can hear the target and fix it before committing.** Auditioning
-   the detected notes (alone and against the record) and editing them (pitch,
-   timing, delete, add) is how the player converts "the machine thinks this" into
-   "I agree this is the phrase." That agreement is what makes the later verdict
-   believable.
-3. **The scope of belief is stated plainly.** Single note at a time only. The UI
-   says so, so the player never distrusts the tool for failing at a chord it was
-   never claiming to read.
+1. **A false "wrong" at the moment of triumph destroys the product.** If the
+   player nailed it and the verdict says otherwise, they stop trusting the tool.
+   So grading is **generous and configurable** (pitch in cents, a timing window,
+   an octave-tolerant option), it **aligns the whole take** before judging so a
+   player who starts a hair late is not punished, and every correct-take fixture
+   must pass at a false-negative rate under about 1 in 10. Believability is
+   measured, not asserted.
+2. **A false "right" is just as fatal.** Silence, noise, or a wrong note must
+   never light up green. A take with no clear line can never be a pass, and
+   wrong-note fixtures must always be flagged wrong. The verdict earns trust by
+   being right in both directions.
+
+The verdict must also be **legible**: each note shows pass or try-again, and the
+player can see which note fell short and why (heard the wrong pitch, or did not
+hear it). A verdict the player can inspect is a verdict the player believes.
 
 Everything else in this EPIC is held to the standard QUALITY BAR.
 
@@ -33,342 +36,373 @@ Everything else in this EPIC is held to the standard QUALITY BAR.
 ## Scope
 
 ### In scope
-Building on the EPIC 1 Loop Room (a loaded song, a snapped loop region, gapless
-looping), add the **target chart** step:
+Building on EPIC 1 (Loop Room, gapless region looping) and EPIC 2 (the
+auditionable, editable target chart held in `LoopRoom` state), add the
+**call-and-response mic verdict**:
 
-- **Transcribe** the current loop region (full mix) with
-  `@spotify/basic-pitch`, entirely in-browser, and reduce the polyphonic model
-  output to a **monophonic** note list: one note per moment, overlaps dropped.
-- **Piano-roll timeline** rendering the detected notes, horizontally aligned to
-  the loop region (time) and vertically by pitch.
-- **Audition:** play the detected notes back as synthesized tones, both **alone**
-  and **over the loop** (time-aligned to the region).
-- **Edit:** change a note's **pitch**, **nudge its timing**, **delete** a note,
-  and **add** a missed note. Edits update the chart that the practice step will
-  consume.
-- **Designed progress state** during transcription that holds the layout steady
-  and never freezes the loop transport controls.
-- **Designed "no clear pitch" state** when a region yields no usable
-  monophonic line, asking for a clearer region, never a crash and never zero
-  notes shown as success.
-- A plain, always-visible statement of the **single-note scope** (riffs and
-  basslines, not chords).
+- **Mic permission** requested behind a designed prompt in the product voice,
+  with a designed state for **denied** and for **no device available**, each
+  giving the next step, never a dead end.
+- **Monophonic pitch tracking on the mic input**, as a **pure** analysis path
+  (autocorrelation / YIN class) that runs on a `Float32Array` take, so the exact
+  same code grades a live mic take and a fixture file.
+- **The call-and-response cycle**, as an explicit state machine:
+  1. **Count-in** clicks at the target tempo.
+  2. **Reference:** the loop plays once through (backing audible) as the call.
+  3. **Count-in**, then **record** the player's pass for one loop length with
+     the **backing muted** and no click, capturing only the mic.
+  4. **Grade** the completed take against the target chart. Grading happens
+     **after the pass, once, on the whole take** — never mid-note, never while
+     any backing plays.
+  5. **Verdict.**
+- **Per-note verdict and per-pass score:** each target note lights **pass** or
+  **try again**; a per-pass score (percent of notes matched) appears.
+- **Generous, configurable tolerances:** pitch tolerance in **cents**, a
+  **timing window** in milliseconds, and an **octave-tolerant** toggle, all
+  editable from a small grading-settings surface, all with generous defaults.
+- **Success confirmation and save offer:** on a matching pass (every target note
+  passes) the app confirms success in the product voice and **offers to save**
+  the phrase to the riff-book. The save action is real this EPIC via a
+  session-held store (see the EPIC 4 boundary below); it is never a dead button.
+- **Automated fixture harness** under `npm test`: synthesized and file-based
+  monophonic takes (clean, detuned, rushed, wrong-note, plus realistic
+  imperfections) fed through the real pitch-track and grading path, proving the
+  false-negative and wrong-note criteria.
 
-### Out of scope (do not build — later EPICs own these)
-- **Stem separation / Demucs.** Transcribe the **full mix only**. Do not add a
-  stem picker or any "isolate instrument" affordance (EPIC 6).
-- **Chord or polyphonic transcription.** The reduction to one note per moment is
-  mandatory, not optional. Do not surface simultaneous notes even if the model
-  emits them.
-- **Tab or standard music notation.** The chart is a piano-roll only. No staves,
-  no clefs, no tablature.
-- **Mic capture, pitch tracking, call-and-response grading, the verdict** — EPIC
-  3. Do NOT build a "Practice" screen, a mic prompt, or a grading path here. The
-  edited chart is retained in app state as the contract EPIC 3 will read; that is
-  the extent of the forward wiring. Do not add a dead or "coming soon" Practice
-  button (that is drift).
-- **Riff-book / IndexedDB persistence** — EPIC 4. The chart lives in in-memory
-  app state only this EPIC. No persistence, no export.
+### Out of scope (do not build — later EPICs own these, or a Non-Goal forbids them)
+- **Real-time / mid-note grading.** Grading is per completed pass only. Do not
+  build a live pitch display that grades notes as they are played. A live input
+  **level meter** during recording (loudness, not correctness) is allowed as
+  feedback; a live *correctness* readout is not.
+- **Grading while the backing loop plays.** The reference play and the recorded
+  pass are separate phases. Never sample the mic for grading while any backing
+  or click sounds.
+- **Polyphonic / chord verification.** One note at a time, matching the
+  monophonic target. Do not attempt to grade two simultaneous pitches.
+- **The riff-book store, browsing screen, streaks, spaced-repetition review, or
+  export** — EPIC 4. This EPIC only *offers* to save and holds saved phrases in
+  an in-memory session store so the offer is truthful. No IndexedDB, no
+  riff-book screen, no streaks, no review, no export.
 - **The guided first-run walkthrough and the baked-in demo chart** — EPIC 5.
-  Reuse EPIC 1's bundled sample clip as-is; do not bake a chart into it.
-- **Pitch-preserving time-stretch.** Unchanged from EPIC 1: the slow-down slider
-  uses playback rate and lowers pitch. Audition-against-loop sidesteps this by
-  playing at true tempo (see Technical design).
+  Reuse EPIC 1's bundled sample and EPIC 2's transcription as-is to reach the
+  verdict; do not add walkthrough overlays.
+- **Stem separation** — EPIC 6. Grade against the full-mix chart from EPIC 2.
+- **A full Settings screen or mic-device picker.** The AC requires configurable
+  pitch/timing/octave tolerances only; build exactly that grading-settings
+  surface. Choosing among multiple input devices is out of scope (use the
+  browser default device). Do not build a tuning-reference control here.
+- **Tab or standard notation.** The verdict renders on the existing piano-roll
+  and note list, not on a staff.
 
 ---
 
 ## Non-goals (binding — from the product plan)
-- No chord or polyphonic transcription.
-- No tab or standard notation rendering.
-- No transcription over an isolated stem yet. Full mix only.
-- No accounts, no backend, no audio ever leaving the machine (the model runs
-  client-side and its weights load same-origin as static assets).
+- No real-time mid-note grading. Grading is per completed pass.
+- No grading while the backing loop plays. Call-and-response only.
+- No polyphonic or chord verification. Monophonic riffs and basslines only.
+- No accounts, no backend, no audio ever leaving the machine. Mic capture and
+  all analysis are client-side; the take is never uploaded and never logged.
 
 ---
 
 ## Technical design
 
-The app stays **fully client-side**. There are **no HTTP API endpoints** and **no
-persisted data-model migrations** in this EPIC. The "data model" below is
-in-memory React state, shaped forward-compatibly with the plan's `Riff.notes` so
-EPIC 4 can persist it without reshaping.
+The app stays **fully client-side**. There are **no HTTP API endpoints** and
+**no persisted data-model migrations** in this EPIC. New state is in-memory
+React state plus, optionally, `localStorage` for the tolerance settings. No new
+runtime dependency is required: pitch tracking is hand-written DSP over Web
+Audio's native `Float32Array` and `getUserMedia`, so the initial bundle does not
+grow (QUALITY BAR §1).
 
-### The note data model (in-memory)
-Add `src/audio/note.ts`:
+### The unifying idea: one pure path for mic and fixtures
+The mic take and every fixture reach grading as the same shape:
+
 ```ts
-export interface Note {
-  id: string;        // stable UI id for editing/keys; EPIC 4 may drop it on persist
-  midi: number;      // MIDI number, integer, clamped to [MIDI_MIN, MIDI_MAX]
-  startSec: number;  // seconds RELATIVE TO REGION START (0 = region start)
-  durSec: number;    // seconds, > 0
-  confidence: number;// 0..1, from the model; edited/added notes use 1
-  edited: boolean;   // true if the user changed or added this note
+export interface Take {
+  samples: Float32Array; // mono PCM
+  sampleRate: number;    // Hz
 }
-export const MIDI_MIN = 28; // E1, below a 4-string bass low E, generous floor
-export const MIDI_MAX = 96; // C7, generous ceiling for guitar
 ```
-Times are **relative to the region start**, so a chart is portable and aligns to
-the region regardless of where in the song the region sits. Helpers
-(`midiToFreq`, `midiToName`) go in `src/audio/pitch.ts` as pure functions:
-`midiToFreq(m) = 440 * 2 ** ((m - 69) / 12)`.
+
+Capture (mic or WAV decode) is a thin, injectable shell. Everything that decides
+the verdict is **pure and deterministic**, so the fixture harness exercises the
+identical code the live mic uses. This is what makes the accuracy criterion
+provable and the verdict believable.
 
 ### Files / modules to touch
 
-New:
-- `src/audio/pitch.ts` — pure: `midiToFreq`, `midiToName` (e.g. `40 -> "E2"`).
-- `src/audio/note.ts` — the `Note` type and constants above.
-- `src/audio/monophonic.ts` — **pure** reduction of poly note events to a
-  monophonic, non-overlapping `Note[]`. Unit-tested. See algorithm below.
-- `src/audio/transcribe.ts` — the transcription boundary. Extracts the region
-  samples from the source `AudioBuffer`, downmixes to mono, resamples to 22050
-  Hz, runs Basic Pitch, maps raw events to `Note[]`, then applies the monophonic
-  reduction. Exposes a small `Transcriber` interface so tests can inject a fake
-  (see Test plan).
-- `src/audio/transcribe.worker.ts` — Web Worker that runs the Basic Pitch / tfjs
-  inference off the main thread and posts progress + results. (Rationale under
-  "Keeping controls alive.")
-- `src/audio/note-synth.ts` — schedule a `Note[]` as synthesized tones over Web
-  Audio. Split into a **pure** `planSchedule(notes, startTimeSec, opts)` that
-  returns `{freq, startAt, stopAt}[]` (unit-tested) and a thin shell that wires
-  `OscillatorNode` + `GainNode` per planned tone. Supports "play alone" and
-  "play against the loop", plus stop.
-- `src/components/ChartPanel.tsx` — the chart surface: piano-roll, audition
-  controls, edit controls, the scope statement, and the two designed states.
-- `src/components/PianoRoll.tsx` — canvas or SVG render of the notes over a
-  region-length time axis and a pitch axis; supports selecting a note and the
-  edit interactions (keyboard-reachable).
-- `src/components/states/TranscribingState.tsx` — layout-stable progress state.
-- `src/components/states/NoPitchState.tsx` — the "pick a clearer part" state.
+New — pure analysis core (no Web Audio, no DOM; fully unit-tested):
+- `src/audio/pitch-detect.ts` — single-frame monophonic pitch detection.
+  `detectPitch(frame: Float32Array, sampleRate: number, opts?) => { hz: number;
+  clarity: number } | null`. Recommended: **YIN** (difference function →
+  cumulative mean normalized difference → absolute threshold → parabolic
+  interpolation), which tracks bass and guitar reliably; plain autocorrelation
+  with parabolic interpolation is acceptable if it meets the fixture bar. The
+  analysis window MUST be long enough to resolve `MIDI_MIN` (E1, ~41 Hz, ~24 ms
+  period): use a window of at least ~2048 samples at 22050 Hz (recommend ~93 ms,
+  e.g. 2048 at 22050 or 4096 at 44100), so at least two periods of the lowest
+  supported note fit. Also export `hzToMidi(hz) => number` (float MIDI) as the
+  inverse of `midiToFreq`.
+- `src/audio/pitch-track.ts` — walks a whole take.
+  `trackPitch(take: Take, opts?) => PitchFrame[]` where
+  `PitchFrame = { timeSec: number; midi: number | null; clarity: number }`.
+  Hops a window across the take (recommend ~10 ms hop), calls `detectPitch` per
+  hop, marks a frame **unvoiced** (`midi: null`) when clarity is below a
+  threshold or the frame energy is below a noise floor. (Implementer may merge
+  this file into `pitch-detect.ts`; keep the pure boundary either way.)
+- `src/audio/grade.ts` — the heart. Pure grading of a pitch track against a
+  target `Note[]`:
+  ```ts
+  export interface Tolerances {
+    cents: number;         // pitch tolerance, +/- cents. Default 50.
+    timingWindowSec: number; // +/- window around each note. Default 0.12.
+    octaveTolerant: boolean;  // ignore octave errors. Default true.
+  }
+  export const DEFAULT_TOLERANCES: Tolerances;
+  export type NoteStatus = "pass" | "wrong-pitch" | "not-heard";
+  export interface NoteVerdict { noteId: string; status: NoteStatus; heardMidi: number | null; }
+  export interface PassResult {
+    perNote: NoteVerdict[];
+    score: number;    // 0..100, round(100 * passed / total)
+    matched: boolean; // true only when EVERY target note passes
+    offsetSec: number; // the global alignment offset that was applied
+    heardLine: boolean; // false when the take is silence/noise (never a pass)
+  }
+  export function gradePass(frames: PitchFrame[], target: Note[], tol: Tolerances): PassResult;
+  export function estimateOffset(frames: PitchFrame[], target: Note[], tol: Tolerances): number;
+  ```
+  Algorithm (deterministic):
+  1. **Heard-line guard.** If the voiced frames cover a negligible fraction of
+     the take (reuse the spirit of `isClearEnough`), set `heardLine: false`,
+     every note `not-heard`, `matched: false`, score 0. Silence and noise can
+     never pass. This is the false-positive guard.
+  2. **Global offset alignment.** Search a bounded offset (e.g. within ±0.3 s)
+     for the value that maximizes the number of passing notes (tie-break by
+     lowest total pitch error). Apply it before per-note grading, so a take that
+     starts slightly late is not penalized. Bounded and pure.
+  3. **Per-note grade.** For each target note, gather voiced frames whose time
+     (after offset) lies in `[start - timingWindowSec, start + durSec +
+     timingWindowSec]`. Take the **median** MIDI of the voiced frames in the
+     note's core span (trim attack/release edges). Compare to the target MIDI:
+     pass when `|heardMidi - targetMidi| <= cents/100` in MIDI units; when
+     `octaveTolerant`, pass when that holds for `targetMidi + 12*k` for any
+     integer `k`. Require a minimum voiced fraction of the note's span (e.g.
+     ≥ ~40%) to count as heard at all; otherwise `not-heard`. If heard but the
+     pitch is off, `wrong-pitch`.
+  4. `matched` is true only when every note is `pass` AND `heardLine` is true.
+- `src/audio/wav.ts` — pure `readWavPcm(bytes: Uint8Array) => Take` for the
+  fixture harness to decode 16-bit PCM WAVs without Web Audio (the mirror of the
+  writer in `scripts/gen-audio.mjs`). Reused by unit tests only, not shipped on
+  a hot path.
+
+New — thin Web Audio / DOM shells (kept minimal; behind injectable interfaces):
+- `src/audio/mic.ts` — the capture boundary.
+  ```ts
+  export type MicPermission = "granted" | "denied" | "unavailable";
+  export interface MicRecorder {
+    requestPermission(): Promise<MicPermission>;
+    record(durationSec: number, onLevel?: (rms: number) => void): Promise<Take>;
+    dispose(): void;
+  }
+  ```
+  Real `WebMicRecorder`: `getUserMedia({ audio: { echoCancellation: false,
+  noiseSuppression: false, autoGainControl: false } })` (raw signal grades
+  better), capture raw PCM via an `AudioWorklet` (preferred) or
+  `ScriptProcessorNode` fallback into a `Float32Array` at the context sample
+  rate, and emit RMS for the live meter. `requestPermission` maps a
+  `NotAllowedError`/`SecurityError` to `denied` and a missing device / no
+  `mediaDevices` to `unavailable`. Component tests inject a fake recorder, so
+  they never touch `getUserMedia` (same pattern as `Transcriber`).
+- `src/audio/metronome.ts` — the count-in. A pure `planClicks(count, bpm,
+  startAt) => { at: number }[]` (unit-tested) plus a thin oscillator shell that
+  schedules short clicks, mirroring `note-synth.ts`. Reuse for both count-ins.
+
+New — UI:
+- `src/components/PracticePanel.tsx` — the call-and-response surface and its
+  state machine (`prompt | denied | unavailable | ready | countin | reference |
+  recording | grading | verdict`). Renders the mic prompt/denied/unavailable
+  states, the count-in, the reference-play indicator, the recording indicator
+  with a live level meter, the per-note verdict lights over the target notes,
+  the per-pass score, the success confirmation + save offer, and the grading
+  tolerances controls. Takes the target `Note[]`, the source buffer + region
+  (for reference play, reusing `LoopPlayer` or `Audition.playWithSong`), an
+  injectable `MicRecorder`, `Tolerances` + a change handler, and `onSave`.
+- `src/components/states/MicPrompt.tsx` — the designed permission request and
+  the denied / unavailable variants (a small component with a `variant` prop, or
+  three tiny components). Each states the next step; none is a dead end.
 
 Changed:
-- `src/components/LoopRoom.tsx` — hold the decoded `AudioBuffer` in a ref (today
-  it lives only inside `LoopPlayer`), add a chart step to the state machine, add
-  the primary action that starts transcription, own the `Note[]` chart state and
-  the region snapshot the chart was transcribed from, and pass `LoopPlayer` to
-  the chart panel for audition-against-loop.
-- `src/styles/global.css` — piano-roll, chart panel, and new-state styles, still
-  mobile-first and reusing the existing CSS variables and control classes.
-- `package.json` — add `@spotify/basic-pitch` and its `@tensorflow/tfjs` peer.
-  Both are **dynamically imported** inside the worker so they stay out of the
-  initial bundle (QUALITY BAR §1).
-- Build config (`vite.config.ts` and/or a copy step) — make the Basic Pitch model
-  assets available **same-origin** under a static path (e.g.
-  `public/models/basic-pitch/`) and load the model from that path. Verify the
-  installed package's actual model location and export names at implement time
-  and load from the local copy, so no audio and no model request goes to a third
-  party.
+- `src/components/ChartPanel.tsx` — add the primary action that enters practice
+  once the player has agreed the chart is right: **`Check my take`**. Keep
+  exactly one visually dominant primary action per state (QUALITY BAR §7): when
+  the chart is ready and non-empty, `Check my take` is primary and audition
+  drops to secondary; disable `Check my take` on an empty chart with a hint.
+- `src/components/LoopRoom.tsx` — add a `practice` phase reachable from the
+  ready chart; render `PracticePanel` with a path back to the chart. Own the
+  `Tolerances` state (default `DEFAULT_TOLERANCES`, optionally persisted to
+  `localStorage`), own the in-memory saved-phrases session store and the
+  `onSave` handler, and construct/inject the `MicRecorder` (default
+  `WebMicRecorder`, injectable for tests, disposed on unmount alongside the
+  existing player/audition/transcriber cleanup).
+- `src/styles/global.css` — practice panel, mic prompt/denied states, count-in,
+  recording indicator + level meter, per-note verdict lights (pass/try-again),
+  score, success confirmation, and the tolerances controls. Mobile-first at
+  390px, reusing existing CSS variables and control classes.
+- `scripts/gen-audio.mjs` (or a new `scripts/gen-takes.mjs`) — extend to
+  synthesize the take battery into `tests/fixtures/takes/` (see Test plan) and,
+  for e2e, a **correct-take capture WAV** matching the bundled sample phrase for
+  Chromium's fake audio device. Document the command in the script header.
+- `playwright.config.ts` — add Chromium launch args so getUserMedia is driven by
+  a file: `--use-fake-device-for-media-stream`,
+  `--use-file-for-fake-audio-capture=<abs path to the capture WAV>` (16-bit PCM
+  WAV), and grant/deny the `microphone` permission per test via the Playwright
+  context. Keep the existing run-scoped-port e2e setup intact.
+- `package.json` — add a `gen:takes` script if a separate generator is used. No
+  new runtime dependency.
+- `README.md` — add the mic verdict step to the "How it works" / usage sections
+  in the stranger-facing voice (drop a song, chart it, play it back, get a
+  note-by-note verdict, everything on your machine), and document that
+  `npm test` includes the accuracy fixture harness. Sweep the new copy.
 
-### Getting the region audio to the model
-`LoopRoom` already decodes to an `AudioBuffer` (currently only stored inside
-`LoopPlayer`). Keep a `bufferRef` to that `AudioBuffer`. On transcribe:
-1. Slice `[region.startSec, region.endSec]` from the buffer, downmixing all
-   channels to mono.
-2. Resample to **22050 Hz** using an `OfflineAudioContext(1, ceil(len*22050),
-   22050)` render (Basic Pitch expects 22050 Hz mono).
-3. Hand the mono Float32Array (transferable) to the worker.
+### The call-and-response state machine (binding order)
+`PracticePanel` progresses strictly:
+`prompt → (permission) → ready → countin → reference → countin → recording →
+grading → verdict`, with `denied`/`unavailable` reachable from the permission
+step and a `Try again` returning to `ready`/`recording` from the verdict. Two
+invariants are **testable and binding**:
+- **Grading runs once, after recording ends, on the whole take.** `gradePass` is
+  called exactly once per pass, in the `grading` phase, never during `reference`
+  or `recording`.
+- **No backing during the recorded pass.** In `recording`, no `LoopPlayer`,
+  `Audition`, or metronome node is sounding. The reference play (backing
+  audible) is a distinct earlier phase.
 
-Region times are absolute in the buffer; the resulting note `startSec` values are
-made **relative to the region start** (subtract `region.startSec` equivalent, i.e.
-the model sees only the slice so its times already start at 0).
-
-### Basic Pitch usage (verify against the installed version)
-Use `@spotify/basic-pitch`'s model + the `outputToNotesPoly` /
-`noteFramesToTime` / `addPitchBendsToNoteEvents` helpers to produce note events
-`{ startTimeSeconds, durationSeconds, pitchMidi, amplitude }`, then map to `Note`
-(`midi = pitchMidi`, `startSec = startTimeSeconds`, `durSec = durationSeconds`,
-`confidence = amplitude` clamped to 0..1, `edited = false`). `evaluateModel`
-reports progress `0..1` via its callback; forward that to the UI. Treat the exact
-import names and thresholds as version-specific: confirm them against the package
-actually installed, do not hardcode from memory. Choose onset/frame thresholds
-that favor **clean, confident** notes over completeness (a missed note the user
-adds by hand is better than a phantom note that erodes trust).
-
-### Monophonic reduction (the mandatory core — pure and tested)
-`reduceToMonophonic(events): Note[]` MUST guarantee the output notes **never
-overlap in time** — one note per moment. Specify and implement it deterministically:
-1. Sort events by `startSec` (tie-break by higher `confidence`, then lower
-   `midi`).
-2. Walk left to right maintaining the last kept note's end. When an incoming
-   event starts before the current kept note ends (overlap):
-   - keep the note with higher confidence; if the incoming note wins and its
-     onset is clearly later, truncate the previous note to end at the incoming
-     onset rather than dropping it, so the timeline stays continuous;
-   - otherwise drop the incoming (lower-confidence) overlapping note.
-3. Drop notes shorter than a minimum audible length (e.g. < ~40 ms) and notes
-   outside `[MIDI_MIN, MIDI_MAX]`.
-4. Assign stable `id`s.
-The exact tie-break/truncate policy is the implementer's to tune, but the
-**post-condition is testable and binding**: for all `i`, `notes[i].startSec +
-notes[i].durSec <= notes[i+1].startSec` (no overlaps), and notes are sorted by
-`startSec`. Unit tests assert this on hand-built overlapping inputs.
-
-### "No clear pitch" detection
-After reduction, treat the region as having no clear line when the result is
-empty OR the total voiced duration is a negligible fraction of the region (e.g.
-kept-note duration sums to < ~10% of region length, tune to the sample). In that
-case render `NoPitchState` (not the piano-roll). This is the guard against
-"zero notes presented as success". The threshold is defined in one place and
-unit-tested via `isClearEnough(notes, regionLen)`.
-
-### Audition (`note-synth.ts`)
-- **Play alone:** schedule each note as a short tone (e.g. `triangle` oscillator
-  through a per-note gain envelope to avoid clicks), `startAt = ctx.currentTime +
-  note.startSec`, `stopAt = startAt + note.durSec`, `freq = midiToFreq(midi)`.
-- **Play against the loop:** start the existing `LoopPlayer` at the region start
-  and schedule the synth notes time-aligned to that same start, so the player
-  hears their notes over the record. Audition plays at **true tempo and pitch**
-  (100%), independent of the slow-down slider, so the pitch comparison is honest
-  (the slider lowers the record's pitch, which would make an aligned comparison
-  misleading). A single aligned pass is sufficient; looping the synth in sync is
-  allowed but not required.
-- Provide **stop**; auditioning must be interruptible and must not leave
-  oscillators running. Auditioning and the Loop Room's own transport must not
-  fight over the audio graph (stopping one stops its own nodes only).
-- The pure `planSchedule` is unit-tested; the oscillator shell is thin.
-
-### Editing interactions (piano-roll)
-All edits mutate the owned `Note[]` and set `edited: true` on the touched note:
-- **Change pitch:** move a selected note up/down by a semitone (buttons and
-  Arrow Up/Down when focused), clamped to `[MIDI_MIN, MIDI_MAX]`. Dragging
-  vertically is a nice-to-have, not required; the keyboard path is required.
-- **Nudge timing:** move a selected note's `startSec` earlier/later by a small
-  step (e.g. 10 ms, larger with a modifier), clamped to `[0, regionLen - durSec]`
-  (buttons and Arrow Left/Right when focused).
-- **Delete:** remove the selected note (button and Delete/Backspace key).
-- **Add:** add a note at a chosen time/pitch (e.g. click/tap an empty spot on the
-  roll, or an "Add note" button that inserts at the playhead/region start at a
-  default pitch), then it is editable like any other. Added notes get
-  `confidence: 1`, `edited: true`, and the reduction's non-overlap invariant is
-  preserved on add (adding into an occupied moment either shifts or is rejected
-  with feedback, never creates an overlap).
-- Every edit gives feedback within 100ms (selection highlight, immediate re-render
-  of the moved/added note).
-
-### Keeping the loop controls alive during transcription (QUALITY BAR §1)
-Basic Pitch / tfjs inference is heavy and would jank the main thread. Run it in
-`transcribe.worker.ts` so:
-- The main thread stays responsive: the loop transport (play/pause/stop, speed,
-  region) keeps working while transcription runs. This is a **binding, testable**
-  requirement ("never freezes the loop controls").
-- Web Audio playback already runs on the audio thread, so the loop keeps sounding
-  regardless; the requirement here is that the *controls* stay interactive.
-- The `TranscribingState` shows honest progress (the model's `0..1` callback,
-  forwarded from the worker) with the layout held steady, and offers a way out
-  (a cancel/back control), never an unbounded spinner with no exit.
-
-### Chart step in the Loop Room state machine
-Extend `LoopRoom`'s status beyond `empty | loading | loaded | error`:
-- In `loaded`, the **primary action** becomes **"Find the notes"** (transcribe
-  the current region). Looping stays available as a secondary reference control;
-  keep exactly one visually dominant primary action per QUALITY BAR §7.
-- Transcribing → `TranscribingState` overlay/panel (controls still live).
-- On result: if clear, show `ChartPanel` (piano-roll + audition + edit + scope
-  statement); if not, show `NoPitchState` with a "pick a clearer part" path back
-  to the region controls.
-- The chart is transcribed for a **specific region snapshot**. If the user
-  changes the region afterward, the chart is stale: offer "Find the notes again"
-  rather than silently keeping a mismatched chart. Do not auto-retranscribe on
-  every drag (expensive); re-run only on explicit action.
-- Chart `Note[]` and the region snapshot live in `LoopRoom` state (lifted), so
-  edits survive leaving and re-entering the chart panel and are the single source
-  of truth EPIC 3's practice step will read.
-
-### Copy (already swept — no em/en dashes, positive, plain)
-- Primary action (loaded): `Find the notes`
-- Scope statement (always visible on the chart): `Needle Drop reads one note at a
-  time. Best on single-note riffs and basslines.`
-- Transcribing state heading: `Reading the notes` with a progress indicator and a
-  `Cancel` control.
-- No-clear-pitch state: heading `This part is hard to read`, body `Pick a part
-  with one clear note at a time, like a bassline or a single-string riff.`,
-  action `Pick another part`.
-- Audition controls: `Play the notes` (alone), `Play with the song` (against the
-  loop), `Stop`.
-- Edit controls: `Up`, `Down` (pitch), `Nudge left`, `Nudge right` (timing),
-  `Delete`, `Add note`.
-- Empty chart after edits (user deleted everything): `Add a note, or read the
-  notes again.` (positive, actionable).
-Sweep every string added or edited in this EPIC before finishing.
+### Perceived speed and feedback (QUALITY BAR §1)
+- Pressing the practice action, the count-in beats, and the recording indicator
+  all render/respond within 100 ms (synchronous state updates; the count-in and
+  recording indicator appear the instant the phase changes). The live level
+  meter animates during recording so the surface is visibly alive.
+- Grading is fast pure DSP over a few seconds of mono audio, so the verdict
+  appears within a fraction of a second after recording ends. Show a brief,
+  layout-stable `grading` state; never a spinner with no end.
 
 ### Security / hygiene (static client app)
-- No new network surface. The model weights load from the app's own origin as
-  static assets; no audio and no model fetch goes to a third party (verifiable in
-  the network panel, same trust primitive as EPIC 1).
-- Validate all edits at the boundary: clamp `midi` to `[MIDI_MIN, MIDI_MAX]`,
-  clamp timing into the region, reject non-finite inputs.
-- No PII in Sentry: never attach file names, audio, or note data to captured
-  events (unchanged from EPIC 1).
+- **No new network surface.** The mic take is analyzed locally and never
+  uploaded (verifiable in the network panel: recording and grading issue no
+  requests). getUserMedia is requested only on explicit user action.
+- **No PII in logs.** Never attach the take, RMS levels, note data, or file
+  names to Sentry events. The mic take exists only in memory for the pass.
+- **Boundary validation.** Clamp tolerance inputs to sane ranges (e.g. cents
+  1..200, timing 0..0.5 s); reject non-finite values. The grader tolerates a
+  malformed/empty pitch track by returning a non-matching result, never
+  throwing.
+
+### Copy (already swept — no em/en dashes, positive, plain)
+- Chart primary action (enter practice): `Check my take`.
+- Mic prompt: heading `Let Needle Drop hear you play`, body `Turn on your mic so
+  it can check your take. Your audio stays on this machine.`, action `Turn on
+  mic`.
+- Mic denied: heading `Turn on your mic`, body `Allow mic access in your browser,
+  then try again.`, action `Try again`.
+- Mic unavailable (no device): heading `Connect a microphone`, body `Plug in a
+  mic, then try again.`, action `Try again`.
+- Ready: primary `Start`, helper `You will hear the phrase once, then play it
+  back after the count.`
+- Reference phase label: `Here is the phrase`.
+- Recording label: `Your turn` with a recording indicator and live level meter.
+- Grading label: `Checking your take`.
+- Verdict, matched: heading `You played it`, line `Every note matched.`, score
+  shown as a percent, actions `Save to riff-book` (primary) and `Play it again`.
+- Verdict, partial: heading `Close`, line `{passed} of {total} notes matched.`,
+  actions `Try again` (primary) and `Hear it again`. Per-note aria labels:
+  `{name} matched` / `{name} try again`.
+- Verdict, nothing heard: heading `I did not catch that`, body `Play a little
+  louder, or move closer to the mic, then try again.`, action `Try again`.
+  (States the next step; not a dead end.)
+- Save confirmation: `Saved to your riff-book.`
+- Tolerances controls: `Pitch tolerance (cents)`, `Timing window (ms)`,
+  `Ignore octave`.
+Sweep every string added or edited in this EPIC before finishing (QUALITY
+BAR §8): the characters `—`/`–`, the banned vocabulary, and negative empty-state
+phrasing.
 
 ---
 
 ## Ordered task list (each with acceptance criteria)
 
-### T1 — Note model, pitch helpers, monophonic reduction (pure core)
-Add `note.ts`, `pitch.ts`, `monophonic.ts`.
-- **AC:** `midiToFreq`/`midiToName` are pure and unit-tested (A4 = 69 → 440 Hz;
-  40 → "E2").
-- **AC:** `reduceToMonophonic` on overlapping inputs returns notes sorted by
-  `startSec` with **no overlaps** (`notes[i].startSec + notes[i].durSec <=
-  notes[i+1].startSec`), drops sub-minimum and out-of-range notes, and is
-  deterministic. Unit-tested with hand-built overlaps.
-- **AC:** `isClearEnough(notes, regionLen)` returns false for empty and
-  negligible-voicing inputs, true for a real line. Unit-tested.
+### T1 — Pure pitch tracking core
+Add `pitch-detect.ts` and `pitch-track.ts` (+ `hzToMidi`).
+- **AC:** `detectPitch` returns the fundamental within a few cents on synthesized
+  sines across the supported range (E1, E2, A2, A4), and returns null / low
+  clarity on silence and white noise. Unit-tested.
+- **AC:** `trackPitch` on a synthesized two-note phrase yields voiced frames at
+  the correct MIDI numbers in the correct time spans, and unvoiced frames over
+  silence. Unit-tested.
 
-### T2 — Transcription boundary + worker (in-browser, off main thread)
-Add `transcribe.ts` (region slice → mono → 22050 Hz resample → Basic Pitch →
-`Note[]` → reduction) and `transcribe.worker.ts`. Add the deps, dynamically
-imported in the worker; make the model assets same-origin.
-- **AC:** Running transcription on a loop region produces a monophonic `Note[]`
-  whose times are within `[0, regionLen]`, computed **entirely in-browser** with
-  no audio and no model request leaving the origin. (Maps to planner AC 1.)
-- **AC:** Transcription runs in a worker; the loop transport controls remain
-  interactive throughout (main thread not blocked). (Maps to planner AC 4.)
-- **AC:** Initial app bundle does not include tfjs/basic-pitch (they load on
-  demand); first paint is unaffected.
+### T2 — Pure grading core + tolerances
+Add `grade.ts` with `DEFAULT_TOLERANCES`, `estimateOffset`, `gradePass`.
+- **AC:** A clean matching take grades to all notes `pass`, score 100,
+  `matched: true`. A take with one wrong note flags that note `wrong-pitch` and
+  `matched: false`. (Maps to planner AC 3, 4.)
+- **AC:** Detune within `cents` passes; beyond it is `wrong-pitch`. Timing rush
+  within `timingWindowSec` passes; beyond it the note is not matched. An
+  octave-shifted take passes with `octaveTolerant: true` and fails with it off.
+  A globally-late take is rescued by `estimateOffset`. A silent/noise take has
+  `heardLine: false` and never matches. Unit-tested. (Maps to planner AC 3, 4;
+  guards the differentiator both ways.)
 
-### T3 — Piano-roll render + chart step wiring
-Add `PianoRoll.tsx` and `ChartPanel.tsx`; wire `LoopRoom` to hold the buffer,
-the chart state, and the region snapshot; add the `Find the notes` primary action.
-- **AC:** The detected notes render on a piano-roll aligned to the region (time
-  on X, pitch on Y), with the single-note scope statement visible. (Maps to
-  planner AC 5, scope-statement half.)
-- **AC:** Exactly one dominant primary action per state; looping stays available
-  as reference during and after transcription.
+### T3 — Mic capture shell + metronome
+Add `mic.ts` (`MicRecorder` interface, `WebMicRecorder`, and a fake for tests)
+and `metronome.ts` (pure `planClicks` + thin shell).
+- **AC:** `WebMicRecorder.requestPermission` resolves `granted` on success,
+  `denied` on `NotAllowedError`, `unavailable` when no device / no
+  `mediaDevices`; `record` returns a `Take` of the requested length at the
+  context sample rate and emits RMS. Verified via a component/integration test
+  with a fake `getUserMedia` (unit-level where practical).
+- **AC:** `planClicks` returns the right number of clicks at the right times for
+  a tempo. Unit-tested. (Maps to planner AC 6, count-in feedback.)
 
-### T4 — Audition (alone and against the loop)
-Add `note-synth.ts` and the audition controls.
-- **AC:** The user plays the detected notes back as tones **alone**, and **over
-  the loop** time-aligned to the region, at true pitch; `Stop` halts audition
-  cleanly. (Maps to planner AC 2.)
-- **AC:** `planSchedule` is pure and unit-tested (correct freqs and start/stop
-  times for a known note list and start time).
+### T4 — PracticePanel state machine + mic states
+Add `PracticePanel.tsx` and `MicPrompt.tsx`; wire `LoopRoom` `practice` phase and
+the `Check my take` entry from `ChartPanel`.
+- **AC:** The mic is requested behind the designed prompt; a denied or
+  unavailable mic shows its designed state with a next step, never a dead end.
+  (Maps to planner AC 1.)
+- **AC:** The cycle runs reference (backing audible) then records with the
+  backing muted, and grading runs once after recording ends, never mid-note and
+  never while backing plays. (Maps to planner AC 2; enforces both Non-Goals.)
 
-### T5 — Editing (pitch, timing, delete, add) carried into the chart state
-Wire the edit interactions to the owned `Note[]`.
-- **AC:** The user can delete a note, change a note's pitch (± semitone,
-  clamped), nudge a note's timing (clamped to the region), and add a missed note;
-  each edit is reflected immediately and sets `edited: true`. (Maps to planner
-  AC 3.)
-- **AC:** Edits persist in `LoopRoom`'s chart state across leaving and
-  re-entering the chart panel (they are the source of truth the practice step
-  will read). No overlap is ever created by an add/nudge. (Maps to planner AC 3,
-  "carry into the practice step".)
+### T5 — Verdict, score, success + save offer
+Render per-note pass/try-again lights, the per-pass score, the success
+confirmation, and the save offer wired to `onSave` (session store).
+- **AC:** After a pass, each target note shows a pass or try-again indicator and
+  a per-pass score appears. (Maps to planner AC 3.)
+- **AC:** On a matching pass the app confirms success in the product voice and
+  offers to save; saving calls `onSave` and confirms. (Maps to planner AC 4.)
 
-### T6 — Designed transcribing and no-clear-pitch states
-Add `TranscribingState.tsx` and `NoPitchState.tsx`; wire both into the state
-machine.
-- **AC:** During transcription a designed progress state shows honest progress
-  with the layout held steady and a way out, and the loop controls never freeze.
-  (Maps to planner AC 4.)
-- **AC:** A region with no clear pitch shows the designed "pick a clearer part"
-  state, never a crash and never zero notes presented as a successful chart.
+### T6 — Configurable tolerances surface
+Add the grading-settings controls (cents, timing window, octave-tolerant),
+generous defaults, changes applied to grading.
+- **AC:** Pitch cents and a timing window are configurable and generous by
+  default; the octave-tolerant option is present; changing a tolerance changes
+  the grade of a borderline take. (Maps to planner AC 3, "generous and
+  configurable".)
+
+### T7 — Accuracy fixture harness
+Add the take battery generator and the Vitest harness that feeds every take
+through `trackPitch` → `gradePass`.
+- **AC:** Under `npm test`, correct-take fixtures (clean plus realistic
+  imperfections) match at a **false-negative rate under about 1 in 10**, and
+  every wrong-note fixture is **flagged wrong** (`matched: false` and the wrong
+  note not `pass`). (Maps to planner AC 5 — the headline accuracy criterion.)
+
+### T8 — Feedback timing, mobile, accessibility, copy sweep
+- **AC:** Count-in, recording indicator, and pressed states render within 100 ms
+  of the triggering action; the verdict appears promptly after recording ends.
   (Maps to planner AC 6.)
-
-### T7 — Mobile, accessibility, and copy sweep
-Make the chart panel and piano-roll usable at 390px; every control labeled,
-keyboard-reachable, with visible focus; run the QUALITY BAR §8 sweep.
-- **AC:** At 390px there is no horizontal scroll; the piano-roll is usable; edit
-  and audition controls are ~44px and keyboard-operable with visible focus.
+- **AC:** The practice panel is usable at 390px with no horizontal scroll, ~44px
+  touch targets, labeled controls, visible focus, full keyboard reach, and an
+  `aria-live` region announcing the verdict.
 - **AC:** No user-visible string added or edited in this EPIC contains `—`, `–`,
   banned vocabulary, or negative empty-state phrasing.
 
@@ -376,78 +410,105 @@ keyboard-reachable, with visible focus; run the QUALITY BAR §8 sweep.
 
 ## Test plan (which tests prove each criterion)
 
-### Unit (Vitest)
-- `pitch.ts`: `midiToFreq`, `midiToName` correctness. → T1.
-- `monophonic.ts`: on hand-built overlapping event lists, output is sorted and
-  **non-overlapping**, sub-minimum and out-of-range notes dropped, deterministic
-  across runs. This is the core proof of "monophonic enforcement is real". →
-  planner AC 5.
-- `monophonic.ts` / `isClearEnough`: empty and negligible inputs → false; a real
-  line → true. → planner AC 6 (the detection half).
-- `note-synth.ts` `planSchedule`: correct freqs and start/stop offsets for a known
-  `Note[]` and start time. → T4.
-- Edit reducers (pure functions behind the panel, e.g. `applyPitch`, `applyNudge`,
-  `applyDelete`, `applyAdd`): clamp to range/region, set `edited`, and preserve
-  the non-overlap invariant. → planner AC 3.
+### Unit (Vitest, pure — no Web Audio, no DOM)
+- `pitch-detect.ts`: fundamentals within a few cents on synthesized sines at E1,
+  E2, A2, A4; null/low clarity on silence and noise; `hzToMidi` inverts
+  `midiToFreq`. → T1.
+- `pitch-track.ts`: a synthesized two-note phrase yields the right voiced MIDIs
+  in the right spans; silence yields unvoiced frames. → T1.
+- `grade.ts`: clean match → all pass, score 100, matched; wrong note →
+  `wrong-pitch`, not matched; detune/timing at and beyond tolerance; octave
+  shift with the flag on vs off; global-offset rescue via `estimateOffset`;
+  silence/noise → `heardLine: false`, never matched. → T2 (the core proof of a
+  believable verdict in both directions).
+- `metronome.ts` `planClicks`: correct count and times for a tempo. → T3.
+- `wav.ts` `readWavPcm`: round-trips PCM written by the generator. → T7 support.
 
-### Component (Vitest + RTL, jsdom — with an injected fake `Transcriber`)
-jsdom has no WebGL/Web Audio, so component tests inject a fake `Transcriber`
-returning known events (real inference is proven in e2e). Tests:
-- `ChartPanel` renders the piano-roll for a known chart and shows the single-note
-  scope statement. → planner AC 5.
-- Edit flow: delete removes a note; pitch up/down changes `midi` and clamps at
-  the bounds; nudge changes `startSec` and clamps at the region edges; add
-  inserts a note. Each updates the visible chart. → planner AC 3.
-- Edits persist when the panel is unmounted and remounted from the same
-  `LoopRoom` state (source-of-truth proof). → planner AC 3 ("carry into
-  practice").
-- `NoPitchState` renders (product voice, a next step) when the fake transcriber
-  returns an empty/negligible result; the piano-roll is not shown and no crash
-  occurs. → planner AC 6.
-- `TranscribingState` renders a layout-stable progress surface with a cancel
-  path. → planner AC 4.
+### Accuracy fixture harness (Vitest — the headline AC, runs under `npm test`)
+Generate a battery into `tests/fixtures/takes/` from a small set of known target
+phrases (reuse the bundled bass line and a second short phrase). For each phrase:
+- **Correct takes** (each should match): clean; slight detune within tolerance;
+  slight rush/drag within the timing window; global late start; added vibrato;
+  richer timbre (added harmonics); a modest noise floor; octave-up (graded with
+  `octaveTolerant: true`). These model synthesized and recording-like conditions.
+- **Wrong takes** (each must be flagged wrong): one note replaced by a wrong
+  pitch; a phrase transposed by a non-octave interval; a phrase of the wrong
+  notes throughout.
 
-### End-to-end (Playwright — real Basic Pitch in real Chromium)
-- **Real in-browser transcription on the bundled sample:** load the bundled
-  monophonic bass sample (`public/sample/riff.wav`, a clean single-note walking
-  line), snap the region, run `Find the notes`. Assert (generous timeout): a
-  piano-roll with **≥ 1 note** appears, the notes are **non-overlapping** and
-  **within the region**, and no audio/model request left the origin (network
-  panel assertion, as in EPIC 1). This proves planner AC 1 with the real model,
-  in-browser, honoring the differentiator's honesty requirement. If the bundled
-  sample proves flaky for the model, add a purpose-built clean monophonic fixture
-  under `tests/fixtures/` (a synthesized single-note phrase) and transcribe that;
-  do not weaken the assertion.
-- **Controls stay alive during transcription:** start transcription and, while the
-  progress state is showing, operate a loop transport control (e.g. toggle
-  play/pause or move the region) and assert it responds. → planner AC 4.
-- **Audition:** after a chart appears, click `Play the notes` and `Play with the
-  song`; assert audition starts and `Stop` ends it (assert via state/UI, since
-  audio output is not directly observable). → planner AC 2.
-- **No-clear-pitch on a silent/noisy region:** drive a region known to yield no
-  line (e.g. a near-silent fixture) and assert the `NoPitchState` appears and the
-  app does not crash and shows no piano-roll. → planner AC 6.
-- **390px:** at a 390px viewport, the chart panel has no horizontal overflow and
-  the primary controls are visible and focusable. → T7.
+The harness decodes each WAV via `readWavPcm` (and/or synthesizes the take in
+memory), runs `trackPitch` → `gradePass` with `DEFAULT_TOLERANCES`, and asserts:
+- Across all correct takes, the fraction that fail to match is **under ~1/10**.
+- Every wrong take has `matched: false` and its wrong note(s) are not `pass`.
+Any recorded WAV dropped into the takes directory is graded by the same pure
+path, so the harness "feeds synthesized and recorded monophonic phrases through
+the grading path" as the planner scope requires. If a synthesis choice is too
+easy to be meaningful, tighten the imperfection models rather than the
+assertions. → planner AC 5.
+
+### Component (Vitest + RTL, jsdom — injected fake `MicRecorder`)
+jsdom has no getUserMedia/Web Audio, so tests inject a fake recorder that
+returns a known `Take` (or the panel accepts an injected grade for pure-UI
+tests). Tests:
+- Mic prompt renders; granting proceeds to `ready`; denying shows the denied
+  state with a next step; `unavailable` shows its state. No dead end. → AC 1.
+- Cycle order: reference precedes recording; `gradePass` (spied) is called
+  exactly once, after recording, never during reference/recording; no backing
+  node sounds during recording. → AC 2 and both Non-Goals.
+- Verdict: given a known `PassResult`, each target note shows a pass/try-again
+  indicator and the per-pass score renders; the verdict is in an `aria-live`
+  region. → AC 3.
+- Success: a matching result shows the success confirmation in the product voice
+  and the save offer; clicking `Save to riff-book` calls `onSave` and shows the
+  confirmation. → AC 4.
+- Tolerances: changing cents/timing/octave updates the tolerances passed to the
+  next grade (and re-grades a held take if applicable). → AC 3 "configurable".
+- Feedback: the recording indicator and count-in appear synchronously on phase
+  change (rendered immediately, no awaited round-trip). → AC 6.
+
+### End-to-end (Playwright — real getUserMedia via Chromium fake device)
+Launch Chromium with the fake audio device fed by a generated capture WAV that
+matches the bundled sample phrase; grant the `microphone` permission via the
+Playwright context.
+- **Full pass, real mic path:** load the sample, `Find the notes`, `Check my
+  take`, `Start`; assert the count-in and recording indicator appear, then the
+  verdict surface appears with per-note indicators and a score. With the
+  matching capture and generous defaults, assert a passing verdict (green
+  notes). If exact alignment proves flaky in CI, assert the verdict surface,
+  per-note lights, and score render and that a clearly-matching capture passes
+  under generous tolerance; the deterministic accuracy proof rests on the Vitest
+  harness, and this test proves the wiring end to end. → AC 1, 2, 3, 6.
+- **Denied mic:** deny the `microphone` permission and assert the denied state
+  appears with a next step and no crash. → AC 1.
+- **No audio left the origin:** during the recorded pass and grading, assert no
+  request left the app's host (network-panel assertion, as in EPIC 1). → privacy
+  / security hygiene.
+- **390px:** at a 390px viewport, the practice panel has no horizontal overflow
+  and the primary controls are visible and focusable. → T8.
 
 ### Copy sweep (QUALITY BAR §8) — part of DONE
 Mechanically search every user-visible string added or edited in this EPIC
-(`ChartPanel`, `PianoRoll`, `TranscribingState`, `NoPitchState`, the new
-`LoopRoom` action, any labels) for `—`/`–`, banned vocabulary, and negative
+(`PracticePanel`, `MicPrompt`, the `ChartPanel` action, verdict/score/settings
+labels, the README additions) for `—`/`–`, banned vocabulary, and negative
 empty-state phrasing. Every hit is a defect fixed in the same run.
 
 ---
 
 ## Definition of done
-All six planner acceptance criteria are provable via the tests above:
-transcription yields a monophonic in-browser note timeline within the region
-(e2e, real model); the notes are auditionable alone and over the loop; pitch,
-timing, delete, and add edits work and are retained as the practice step's source
-of truth; a designed progress state shows during transcription and the loop
-controls never freeze; the monophonic reduction is provably non-overlapping and
-the single-note scope is stated plainly; a no-clear-pitch region shows a designed
-state, never a crash and never zero-notes-as-success. The QUALITY BAR is met for
-the chart surface (perceived speed and lazy-loaded model, mobile at 390px,
-designed transcribing/no-pitch/empty-chart states, accessibility, one primary
-action, human copy), no non-goal was built (no stem, no chords, no notation, no
-mic/verdict, no persistence), and the copy sweep is clean.
+All six planner acceptance criteria are provable via the tests above: the mic is
+requested behind a designed prompt and denied/unavailable states are dead-end
+free (component + e2e); the cycle plays the reference then records with the
+backing muted and grades once after the pass, never mid-note and never over
+backing (component invariants + e2e); each target note shows pass/try-again with
+a per-pass score under generous, configurable pitch-cents / timing / octave
+tolerances (unit + component); a matching pass confirms success in the product
+voice and offers a real save (component); the accuracy fixture harness runs under
+`npm test` with correct-take false negatives under about 1 in 10 and every
+wrong-note fixture flagged wrong (fixture harness); and count-in, recording
+indicator, and pressed states land within 100 ms with the verdict prompt after
+the pass (component + e2e). The QUALITY BAR is met for the practice surface
+(perceived speed, no bundle growth, mobile at 390px, designed
+prompt/denied/grading/verdict/nothing-heard states, accessibility with an
+aria-live verdict, one primary action, human copy), no Non-Goal was built (no
+mid-note grading, no grading over backing, no polyphony, no riff-book
+persistence/screen/streaks/review/export, no stem separation), and the copy
+sweep is clean.

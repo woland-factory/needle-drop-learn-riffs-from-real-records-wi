@@ -1,6 +1,12 @@
 // Generates the self-produced audio bundled with the app.
 //  - public/sample/riff.wav : a short monophonic bass riff for the sample entry point.
 //  - tests/fixtures/tone.wav : a tiny tone the e2e/unit tests decode.
+//  - tests/fixtures/silence.wav : the "no clear pitch" e2e fixture.
+//  - tests/fixtures/capture-sample.wav : the loop region of the sample, fed to
+//    Chromium's fake mic in the practice e2e so the real grading path runs on a
+//    real monophonic line. The accuracy fixture harness synthesizes its take
+//    battery in memory (see tests/unit/accuracy.test.ts), so no take WAVs are
+//    committed here.
 // Run with: node scripts/gen-audio.mjs
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -80,7 +86,8 @@ function silence(durSec) {
   return new Float32Array(Math.floor(durSec * SR));
 }
 
-const sampleBytes = writeWav(resolve(root, "public/sample/riff.wav"), riff());
+const sampleSamples = riff();
+const sampleBytes = writeWav(resolve(root, "public/sample/riff.wav"), sampleSamples);
 const toneBytes = writeWav(
   resolve(root, "tests/fixtures/tone.wav"),
   note(220, 1.0),
@@ -89,6 +96,15 @@ const silenceBytes = writeWav(
   resolve(root, "tests/fixtures/silence.wav"),
   silence(4.8),
 );
+
+// The loop region the app grades: 2 bars at 120 BPM = 4.0 s of the sample.
+const REGION_SEC = 4.0;
+const captureBytes = writeWav(
+  resolve(root, "tests/fixtures/capture-sample.wav"),
+  sampleSamples.slice(0, Math.floor(REGION_SEC * SR)),
+);
+
 console.log(`sample riff.wav: ${sampleBytes} bytes`);
 console.log(`fixture tone.wav: ${toneBytes} bytes`);
 console.log(`fixture silence.wav: ${silenceBytes} bytes`);
+console.log(`fixture capture-sample.wav: ${captureBytes} bytes`);

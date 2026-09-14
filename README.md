@@ -15,6 +15,14 @@ record, and edit note by note until you agree it is the phrase. It reads one
 note at a time, so it works best on single-note riffs and basslines. The
 transcription runs entirely in your browser.
 
+When the chart looks right, press "Check my take". Needle Drop plays the phrase
+once, counts you in, and records one pass through your mic. Then it grades the
+take note by note and tells you which notes matched and which to try again. A
+matching pass offers to save the phrase to your riff-book. Pitch tolerance,
+timing window, and octave matching are all adjustable, with generous defaults.
+Your audio never leaves the machine: the mic take is analyzed locally and thrown
+away after each pass.
+
 ## Run it
 
 You need [Node.js 22](https://nodejs.org) (see `.nvmrc`).
@@ -64,16 +72,28 @@ so for local use prefer the `docker run` command above.
   from the app's own origin, so no audio and no model request leaves your
   machine. The result is reduced to one note per moment, and a region with no
   clear pitch shows a designed state instead of a guessed note.
+- "Check my take" records one pass through the mic and grades it with
+  hand-written pitch tracking (a YIN-class detector) over the raw audio. Grading
+  is generous and configurable, it aligns the whole take before judging so a
+  slightly late start is not punished, and a take with no clear line never
+  passes. The same pure code grades a live mic take and the accuracy test
+  fixtures, so the verdict is measured, not asserted.
 
 ## Contribute
 
 - App code is in `src/`: `audio/` holds the decode, waveform peaks, timing math,
   loop player, and the transcription path (the `transcribe` worker, the
-  monophonic reduction, pitch helpers, and note synth). `components/` holds the
-  Loop Room UI, the chart panel and piano roll, and the empty, loading, error,
-  transcribing, and no-clear-pitch states. `observability/` wires optional
-  Sentry and Umami. The Basic Pitch model weights live in
-  `public/models/basic-pitch/` so they are served from the app's own origin.
+  monophonic reduction, pitch helpers, and note synth), plus the mic verdict core
+  (`pitch-detect`, `pitch-track`, `grade`, `wav`, `metronome`, and the `mic`
+  capture boundary). `components/` holds the Loop Room UI, the chart panel and
+  piano roll, the practice panel, and the empty, loading, error, transcribing,
+  no-clear-pitch, and mic prompt states. `observability/` wires optional Sentry
+  and Umami. The Basic Pitch model weights live in `public/models/basic-pitch/`
+  so they are served from the app's own origin.
+- `npm test` includes the accuracy fixture harness
+  (`tests/unit/accuracy.test.ts`), which feeds a battery of synthesized takes
+  through the real pitch-track and grading path and proves correct takes match
+  and wrong takes are flagged.
 - Run the unit and component tests (Vitest):
 
   ```bash
