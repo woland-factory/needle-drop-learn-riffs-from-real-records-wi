@@ -60,10 +60,18 @@ test.describe("practice with a granted mic", () => {
 });
 
 test.describe("practice with a denied mic", () => {
-  test.use({ permissions: [] });
-
+  // Chromium's fake media UI auto-accepts every prompt, so a real deny is not
+  // reachable here. Reject getUserMedia with the browser's own NotAllowedError
+  // to drive the exact denied code path the UI handles.
   test("shows the denied state with a next step, never a dead end", async ({ page }) => {
     test.setTimeout(120_000);
+    await page.addInitScript(() => {
+      const err = new DOMException("Permission denied", "NotAllowedError");
+      Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+        configurable: true,
+        value: () => Promise.reject(err),
+      });
+    });
     await reachChart(page);
     await page.getByRole("button", { name: /check my take/i }).click();
     await page.getByRole("button", { name: /turn on mic/i }).click();
