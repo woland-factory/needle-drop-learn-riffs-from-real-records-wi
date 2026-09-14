@@ -87,7 +87,7 @@ export function LoopControls({
       <div className="transport">
         <button
           type="button"
-          className="btn btn-primary"
+          className="btn"
           aria-pressed={playing}
           onClick={onPlayPause}
         >

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { decodeAudioFile, AudioDecodeError, type DecodeErrorKind } from "../audio/decode";
 import { computePeaksFromBuffer, type Peak } from "../audio/peaks";
 import { LoopPlayer, clampRate } from "../audio/loop-player";
@@ -9,16 +9,28 @@ import {
   snapRegionToBars,
   type Region,
 } from "../audio/timing";
+import { Audition } from "../audio/note-synth";
+import { isClearEnough } from "../audio/monophonic";
+import type { Note } from "../audio/note";
+import {
+  WorkerTranscriber,
+  type AbsoluteRegion,
+  type Transcriber,
+} from "../audio/transcribe";
 import { EmptyState } from "./states/EmptyState";
 import { LoadingState } from "./states/LoadingState";
 import { ErrorState } from "./states/ErrorState";
+import { TranscribingState } from "./states/TranscribingState";
+import { NoPitchState } from "./states/NoPitchState";
 import { Waveform } from "./Waveform";
 import { LoopControls } from "./LoopControls";
+import { ChartPanel } from "./ChartPanel";
 
 const PEAK_BUCKETS = 600;
 const SAMPLE_URL = "/sample/riff.wav";
 
 type Status = "empty" | "loading" | "loaded" | "error";
+type ChartPhase = "none" | "transcribing" | "ready" | "nopitch";
 
 function createAudioContext(): AudioContext {
   const Ctx =
@@ -28,7 +40,12 @@ function createAudioContext(): AudioContext {
   return new Ctx();
 }
 
-export function LoopRoom() {
+interface LoopRoomProps {
+  /** Injectable for tests; defaults to the real Web Worker transcriber. */
+  transcriber?: Transcriber;
+}
+
+export function LoopRoom({ transcriber }: LoopRoomProps = {}) {
   const [status, setStatus] = useState<Status>("empty");
   const [errorKind, setErrorKind] = useState<DecodeErrorKind>("unsupported");
   const [peaks, setPeaks] = useState<Peak[]>([]);
@@ -41,18 +58,45 @@ export function LoopRoom() {
   const [speed, setSpeed] = useState(1);
   const [playing, setPlaying] = useState(false);
 
+  const [chartPhase, setChartPhase] = useState<ChartPhase>("none");
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [chartRegion, setChartRegion] = useState<AbsoluteRegion | null>(null);
+  const [progress, setProgress] = useState(0);
+
   const ctxRef = useRef<AudioContext | null>(null);
   const playerRef = useRef<LoopPlayer | null>(null);
+  const bufferRef = useRef<AudioBuffer | null>(null);
+  const auditionRef = useRef<Audition | null>(null);
+
+  const activeTranscriber = useMemo<Transcriber>(
+    () => transcriber ?? new WorkerTranscriber(),
+    [transcriber],
+  );
 
   const getCtx = useCallback((): AudioContext => {
     if (!ctxRef.current) ctxRef.current = createAudioContext();
     return ctxRef.current;
   }, []);
 
+  const getAudition = useCallback((): Audition => {
+    if (!auditionRef.current) auditionRef.current = new Audition(getCtx());
+    return auditionRef.current;
+  }, [getCtx]);
+
+  const resetChart = useCallback(() => {
+    auditionRef.current?.stop();
+    activeTranscriber.cancel();
+    setChartPhase("none");
+    setNotes([]);
+    setChartRegion(null);
+    setProgress(0);
+  }, [activeTranscriber]);
+
   const loadFile = useCallback(
     async (file: File) => {
       setStatus("loading");
       setPlaying(false);
+      resetChart();
       try {
         const ctx = getCtx();
         const buffer = await decodeAudioFile(file, ctx);
@@ -69,6 +113,7 @@ export function LoopRoom() {
         player.setRegion(initial);
         player.setRate(1);
         playerRef.current = player;
+        bufferRef.current = buffer;
         setPeaks(nextPeaks);
         setDuration(buffer.duration);
         setSourceName(file.name);
@@ -85,7 +130,7 @@ export function LoopRoom() {
         setStatus("error");
       }
     },
-    [getCtx],
+    [getCtx, resetChart],
   );
 
   const loadSample = useCallback(async () => {
@@ -113,9 +158,11 @@ export function LoopRoom() {
   useEffect(() => {
     return () => {
       playerRef.current?.dispose();
+      auditionRef.current?.stop();
+      activeTranscriber.dispose();
       void ctxRef.current?.close();
     };
-  }, []);
+  }, [activeTranscriber]);
 
   function applyRegion(proposed: Region) {
     if (snapOn) {
@@ -190,12 +237,57 @@ export function LoopRoom() {
     setPlaying(false);
   }
 
+  async function findNotes() {
+    const buffer = bufferRef.current;
+    if (!buffer) return;
+    const snapshot: AbsoluteRegion = {
+      startSec: region.startSec,
+      endSec: region.endSec,
+    };
+    const regionLen = snapshot.endSec - snapshot.startSec;
+    setChartRegion(snapshot);
+    setProgress(0);
+    setChartPhase("transcribing");
+    try {
+      const result = await activeTranscriber.transcribe(
+        { buffer, region: snapshot },
+        setProgress,
+      );
+      if (isClearEnough(result, regionLen)) {
+        setNotes(result);
+        setChartPhase("ready");
+      } else {
+        setNotes([]);
+        setChartPhase("nopitch");
+      }
+    } catch {
+      // Cancelled or failed: return to the start so the user can try again.
+      setChartPhase("none");
+    }
+  }
+
+  function cancelFind() {
+    activeTranscriber.cancel();
+    setChartPhase("none");
+  }
+
   function reset() {
     playerRef.current?.dispose();
     playerRef.current = null;
+    bufferRef.current = null;
+    resetChart();
     setStatus("empty");
     setPlaying(false);
   }
+
+  const chartRegionLen = chartRegion
+    ? chartRegion.endSec - chartRegion.startSec
+    : 0;
+  const stale =
+    chartPhase === "ready" &&
+    chartRegion !== null &&
+    (Math.abs(chartRegion.startSec - region.startSec) > 1e-4 ||
+      Math.abs(chartRegion.endSec - region.endSec) > 1e-4);
 
   return (
     <main className="app">
@@ -246,6 +338,42 @@ export function LoopRoom() {
               </button>
             </div>
           </section>
+
+          {chartPhase === "none" && (
+            <section className="card chart-start">
+              <button
+                type="button"
+                className="btn btn-primary btn-block"
+                onClick={findNotes}
+              >
+                Find the notes
+              </button>
+              <p className="chart-start-note">
+                Turn this loop into notes you can hear and check.
+              </p>
+            </section>
+          )}
+
+          {chartPhase === "transcribing" && (
+            <TranscribingState progress={progress} onCancel={cancelFind} />
+          )}
+
+          {chartPhase === "nopitch" && (
+            <NoPitchState onBack={() => setChartPhase("none")} />
+          )}
+
+          {chartPhase === "ready" && chartRegion && (
+            <ChartPanel
+              notes={notes}
+              regionLen={chartRegionLen}
+              buffer={bufferRef.current as AudioBuffer}
+              region={chartRegion}
+              audition={getAudition()}
+              stale={stale}
+              onChange={setNotes}
+              onRefind={findNotes}
+            />
+          )}
         </>
       )}
     </main>
