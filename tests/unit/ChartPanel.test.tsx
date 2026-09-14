@@ -54,6 +54,7 @@ function Harness({
         stale={false}
         onChange={setNotes}
         onRefind={() => {}}
+        onCheck={() => {}}
       />
     </>
   );

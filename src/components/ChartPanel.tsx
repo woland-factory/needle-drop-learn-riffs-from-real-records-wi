@@ -24,6 +24,7 @@ interface ChartPanelProps {
   stale: boolean;
   onChange: (next: Note[]) => void;
   onRefind: () => void;
+  onCheck: () => void;
 }
 
 export function ChartPanel({
@@ -35,6 +36,7 @@ export function ChartPanel({
   stale,
   onChange,
   onRefind,
+  onCheck,
 }: ChartPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [play, setPlay] = useState<PlayMode>("none");
@@ -152,15 +154,31 @@ export function ChartPanel({
       )}
 
       <div className="chart-actions">
+        <div className="check-row">
+          <button
+            type="button"
+            className="btn btn-primary btn-block"
+            onClick={onCheck}
+            disabled={empty}
+          >
+            Check my take
+          </button>
+          {empty && (
+            <p className="chart-hint" role="status">
+              Add a note first, then check your take.
+            </p>
+          )}
+        </div>
+
         <div className="action-row" aria-label="Play the target">
           {playing ? (
-            <button type="button" className="btn btn-primary" onClick={stop}>
+            <button type="button" className="btn" onClick={stop}>
               Stop
             </button>
           ) : (
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn"
               onClick={() => start("with")}
               disabled={empty}
             >

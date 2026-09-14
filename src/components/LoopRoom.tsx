@@ -17,6 +17,13 @@ import {
   type AbsoluteRegion,
   type Transcriber,
 } from "../audio/transcribe";
+import { WebMicRecorder, type MicRecorder } from "../audio/mic";
+import { Metronome, type MetronomeLike } from "../audio/metronome";
+import {
+  DEFAULT_TOLERANCES,
+  clampTolerances,
+  type Tolerances,
+} from "../audio/grade";
 import { EmptyState } from "./states/EmptyState";
 import { LoadingState } from "./states/LoadingState";
 import { ErrorState } from "./states/ErrorState";
@@ -25,9 +32,21 @@ import { NoPitchState } from "./states/NoPitchState";
 import { Waveform } from "./Waveform";
 import { LoopControls } from "./LoopControls";
 import { ChartPanel } from "./ChartPanel";
+import { PracticePanel } from "./PracticePanel";
 
 const PEAK_BUCKETS = 600;
 const SAMPLE_URL = "/sample/riff.wav";
+const TOLERANCES_KEY = "needle-drop-tolerances";
+
+function loadTolerances(): Tolerances {
+  try {
+    const raw = localStorage.getItem(TOLERANCES_KEY);
+    if (raw) return clampTolerances({ ...DEFAULT_TOLERANCES, ...JSON.parse(raw) });
+  } catch {
+    // ignore malformed or unavailable storage
+  }
+  return DEFAULT_TOLERANCES;
+}
 
 type Status = "empty" | "loading" | "loaded" | "error";
 type ChartPhase = "none" | "transcribing" | "ready" | "nopitch";
@@ -43,9 +62,11 @@ function createAudioContext(): AudioContext {
 interface LoopRoomProps {
   /** Injectable for tests; defaults to the real Web Worker transcriber. */
   transcriber?: Transcriber;
+  /** Injectable for tests/e2e; defaults to the real mic recorder. */
+  recorder?: MicRecorder;
 }
 
-export function LoopRoom({ transcriber }: LoopRoomProps = {}) {
+export function LoopRoom({ transcriber, recorder }: LoopRoomProps = {}) {
   const [status, setStatus] = useState<Status>("empty");
   const [errorKind, setErrorKind] = useState<DecodeErrorKind>("unsupported");
   const [peaks, setPeaks] = useState<Peak[]>([]);
@@ -62,15 +83,23 @@ export function LoopRoom({ transcriber }: LoopRoomProps = {}) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [chartRegion, setChartRegion] = useState<AbsoluteRegion | null>(null);
   const [progress, setProgress] = useState(0);
+  const [practicing, setPracticing] = useState(false);
+  const [tolerances, setTolerances] = useState<Tolerances>(loadTolerances);
 
   const ctxRef = useRef<AudioContext | null>(null);
   const playerRef = useRef<LoopPlayer | null>(null);
   const bufferRef = useRef<AudioBuffer | null>(null);
   const auditionRef = useRef<Audition | null>(null);
+  const metronomeRef = useRef<MetronomeLike | null>(null);
+  const savedRef = useRef<Note[][]>([]); // in-memory riff-book for this session
 
   const activeTranscriber = useMemo<Transcriber>(
     () => transcriber ?? new WorkerTranscriber(),
     [transcriber],
+  );
+  const activeRecorder = useMemo<MicRecorder>(
+    () => recorder ?? new WebMicRecorder(),
+    [recorder],
   );
 
   const getCtx = useCallback((): AudioContext => {
@@ -83,10 +112,30 @@ export function LoopRoom({ transcriber }: LoopRoomProps = {}) {
     return auditionRef.current;
   }, [getCtx]);
 
+  const getMetronome = useCallback((): MetronomeLike => {
+    if (!metronomeRef.current) metronomeRef.current = new Metronome(getCtx());
+    return metronomeRef.current;
+  }, [getCtx]);
+
+  const changeTolerances = useCallback((next: Tolerances) => {
+    setTolerances(next);
+    try {
+      localStorage.setItem(TOLERANCES_KEY, JSON.stringify(next));
+    } catch {
+      // ignore unavailable storage
+    }
+  }, []);
+
+  const savePhrase = useCallback((phrase: Note[]) => {
+    savedRef.current.push(phrase.map((n) => ({ ...n })));
+  }, []);
+
   const resetChart = useCallback(() => {
     auditionRef.current?.stop();
+    metronomeRef.current?.stop();
     activeTranscriber.cancel();
     setChartPhase("none");
+    setPracticing(false);
     setNotes([]);
     setChartRegion(null);
     setProgress(0);
@@ -159,10 +208,12 @@ export function LoopRoom({ transcriber }: LoopRoomProps = {}) {
     return () => {
       playerRef.current?.dispose();
       auditionRef.current?.stop();
+      metronomeRef.current?.stop();
+      activeRecorder.dispose();
       activeTranscriber.dispose();
       void ctxRef.current?.close();
     };
-  }, [activeTranscriber]);
+  }, [activeTranscriber, activeRecorder]);
 
   function applyRegion(proposed: Region) {
     if (snapOn) {
@@ -362,7 +413,7 @@ export function LoopRoom({ transcriber }: LoopRoomProps = {}) {
             <NoPitchState onBack={() => setChartPhase("none")} />
           )}
 
-          {chartPhase === "ready" && chartRegion && (
+          {chartPhase === "ready" && chartRegion && !practicing && (
             <ChartPanel
               notes={notes}
               regionLen={chartRegionLen}
@@ -372,6 +423,28 @@ export function LoopRoom({ transcriber }: LoopRoomProps = {}) {
               stale={stale}
               onChange={setNotes}
               onRefind={findNotes}
+              onCheck={() => setPracticing(true)}
+            />
+          )}
+
+          {chartPhase === "ready" && chartRegion && practicing && (
+            <PracticePanel
+              notes={notes}
+              regionLen={chartRegionLen}
+              bpm={bpm}
+              buffer={bufferRef.current as AudioBuffer}
+              region={chartRegion}
+              recorder={activeRecorder}
+              audition={getAudition()}
+              metronome={getMetronome()}
+              tolerances={tolerances}
+              onTolerancesChange={changeTolerances}
+              onSave={savePhrase}
+              onBack={() => {
+                getAudition().stop();
+                getMetronome().stop();
+                setPracticing(false);
+              }}
             />
           )}
         </>
