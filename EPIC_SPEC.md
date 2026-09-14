@@ -1,4 +1,4 @@
-# EPIC SPEC — Loop Room and staging deploy scaffold
+# EPIC SPEC — Target chart: transcribe, audition, edit
 
 ## Quality differentiator (read first)
 
@@ -6,20 +6,25 @@
 verdict the player believes, on their own records, where every competitor either
 never listens or listens only to its own catalog.
 
-**What it demands of THIS EPIC:** this EPIC does not verify anything yet. It
-builds the room the verdict will one day live in, so its job toward the
-differentiator is to earn trust at the input stage. Two things carry that
-weight here:
+**What it demands of THIS EPIC:** this is the EPIC where the differentiator is
+won or lost. The verdict in EPIC 3 grades the player against *this chart*. If the
+target the machine derived is wrong, no honest verdict is possible: a false
+"wrong note" at the moment of triumph destroys the product. So this EPIC's whole
+job is to make the target **believable before practice** by making it
+**auditionable and editable**. Concretely:
 
-1. **The audio the user hears must be exactly the audio they loaded, looped
-   truthfully.** No resampling artifacts, no clicks at the loop seam, no drift
-   between the waveform they see and the sound they hear. A player who cannot
-   trust that the loop plays the real record back accurately will never trust a
-   verdict about it later. Gapless, sample-accurate looping and a waveform that
-   matches the audio are trust primitives, not cosmetics.
-2. **Their file never leaves their machine, and the app says so plainly.** The
-   whole premise is "on music you chose, on your own machine." No audio may
-   touch the network. This must be true and visibly true.
+1. **The chart must be honestly derived and never faked.** A region with no clear
+   pitch shows a designed "pick a clearer part" state. It NEVER presents zero
+   notes, or a guessed note, as a successful transcription. Silence graded as
+   success is the exact failure that kills trust.
+2. **The player can hear the target and fix it before committing.** Auditioning
+   the detected notes (alone and against the record) and editing them (pitch,
+   timing, delete, add) is how the player converts "the machine thinks this" into
+   "I agree this is the phrase." That agreement is what makes the later verdict
+   believable.
+3. **The scope of belief is stated plainly.** Single note at a time only. The UI
+   says so, so the player never distrusts the tool for failing at a chord it was
+   never claiming to read.
 
 Everything else in this EPIC is held to the standard QUALITY BAR.
 
@@ -28,412 +33,421 @@ Everything else in this EPIC is held to the standard QUALITY BAR.
 ## Scope
 
 ### In scope
-- A Vite + React + TypeScript single-page app, scaffolded from empty repo.
-- Static production build served by nginx in a `Dockerfile`, orchestrated by
-  `docker-compose.staging.yml` at the repo root.
-- Runtime observability wiring that is fully optional: `SENTRY_DSN` (GlitchTip /
-  Sentry-compatible) and Umami (`UMAMI_WEBSITE_ID`, `UMAMI_URL`), injected at
-  container start, no-op when unset.
-- The **Loop Room** surface (the app home):
-  - Load a local audio file (`mp3`, `wav`, `ogg`, `flac`) with **no upload**;
-    all decoding happens in-browser.
-  - Render a waveform of the loaded file.
-  - Drag a loop region across the waveform.
-  - Snap the region to a musical length via a **tempo (BPM)** and **bars** input
-    (default two bars).
-  - Adjust playback speed from **50% to 100%**.
-  - Loop the region **gaplessly**.
-  - A **sample entry point**: a button that loads a short bundled audio clip so
-    the Loop Room is demonstrable without the user hunting for a file.
-- Designed **empty, loading, and error** states for the Loop Room.
-- Mobile-first layout usable at a **390px** viewport.
-- A **stranger-facing README** (understand, run, contribute).
-- Accessibility basics and keyboard reach for every Loop Room control.
+Building on the EPIC 1 Loop Room (a loaded song, a snapped loop region, gapless
+looping), add the **target chart** step:
+
+- **Transcribe** the current loop region (full mix) with
+  `@spotify/basic-pitch`, entirely in-browser, and reduce the polyphonic model
+  output to a **monophonic** note list: one note per moment, overlaps dropped.
+- **Piano-roll timeline** rendering the detected notes, horizontally aligned to
+  the loop region (time) and vertically by pitch.
+- **Audition:** play the detected notes back as synthesized tones, both **alone**
+  and **over the loop** (time-aligned to the region).
+- **Edit:** change a note's **pitch**, **nudge its timing**, **delete** a note,
+  and **add** a missed note. Edits update the chart that the practice step will
+  consume.
+- **Designed progress state** during transcription that holds the layout steady
+  and never freezes the loop transport controls.
+- **Designed "no clear pitch" state** when a region yields no usable
+  monophonic line, asking for a clearer region, never a crash and never zero
+  notes shown as success.
+- A plain, always-visible statement of the **single-note scope** (riffs and
+  basslines, not chords).
 
 ### Out of scope (do not build — later EPICs own these)
-- **Stem separation / Demucs** (EPIC 6).
-- **Transcription / target chart** (Basic Pitch, piano-roll, note editing) —
-  EPIC 2.
-- **Mic capture, pitch tracking, call-and-response grading, the verdict** —
-  EPIC 3.
-- **Riff-book, IndexedDB persistence, streaks, review decay, export** — EPIC 4.
-- **The bundled *demo riff* with a baked-in chart and the guided first-run
-  walkthrough** — EPIC 5. This EPIC ships only a plain *sample audio clip* for
-  the Loop Room (see "Sample entry point vs. demo riff" below). Do not build a
-  multi-step walkthrough, do not bake in a chart, do not gate anything on
-  `SEED_DEMO` here.
-- **Accounts, backend endpoints, any server-side logic beyond serving static
-  files.**
-- **Pitch-preserving time-stretch.** Slowdown in this EPIC uses playback rate,
-  which lowers pitch as it slows (see Technical design → Audio engine). This is
-  the honest, in-scope behavior for EPIC 1. If pitch-preserved slowdown is
-  wanted, it is a separate future task, requested via `requested_tasks`, not
-  built here.
-
-### Sample entry point vs. demo riff (scope boundary — read carefully)
-The planner's acceptance criterion for this EPIC says the empty state "shows the
-demo entry point." In EPIC 1 that entry point is a **sample audio clip only**: a
-short, self-produced or clearly-licensed monophonic audio file bundled in the
-app that, when loaded, behaves exactly like a user-dropped file (waveform, loop
-region, snap, speed, gapless loop). It exists so a first-time visitor reaches the
-Loop Room's core action in seconds without a file hunt, satisfying QUALITY BAR §4
-first-run at the level EPIC 1 can.
-
-The **full demo riff** (a phrase with a baked-in chart that can be taken all the
-way to a green-note verdict) and the **2-to-4-step guided walkthrough** are
-EPIC 5. Do not build them now. Do not add a chart or verdict affordance to the
-sample. When EPIC 5 lands, it may replace or extend this sample; keep the sample
-loading path simple and swappable.
+- **Stem separation / Demucs.** Transcribe the **full mix only**. Do not add a
+  stem picker or any "isolate instrument" affordance (EPIC 6).
+- **Chord or polyphonic transcription.** The reduction to one note per moment is
+  mandatory, not optional. Do not surface simultaneous notes even if the model
+  emits them.
+- **Tab or standard music notation.** The chart is a piano-roll only. No staves,
+  no clefs, no tablature.
+- **Mic capture, pitch tracking, call-and-response grading, the verdict** — EPIC
+  3. Do NOT build a "Practice" screen, a mic prompt, or a grading path here. The
+  edited chart is retained in app state as the contract EPIC 3 will read; that is
+  the extent of the forward wiring. Do not add a dead or "coming soon" Practice
+  button (that is drift).
+- **Riff-book / IndexedDB persistence** — EPIC 4. The chart lives in in-memory
+  app state only this EPIC. No persistence, no export.
+- **The guided first-run walkthrough and the baked-in demo chart** — EPIC 5.
+  Reuse EPIC 1's bundled sample clip as-is; do not bake a chart into it.
+- **Pitch-preserving time-stretch.** Unchanged from EPIC 1: the slow-down slider
+  uses playback rate and lowers pitch. Audition-against-loop sidesteps this by
+  playing at true tempo (see Technical design).
 
 ---
 
 ## Non-goals (binding — from the product plan)
-- No stem separation.
-- No transcription or mic features.
-- No accounts or backend endpoints.
-- No polyphonic handling of any kind (not relevant yet, but do not build UI that
-  implies chords).
-- No uploading audio anywhere, ever.
+- No chord or polyphonic transcription.
+- No tab or standard notation rendering.
+- No transcription over an isolated stem yet. Full mix only.
+- No accounts, no backend, no audio ever leaving the machine (the model runs
+  client-side and its weights load same-origin as static assets).
 
 ---
 
 ## Technical design
 
-The app is **fully client-side**. There are **no HTTP API endpoints** and **no
-data-model migrations** in this EPIC (persistence arrives in EPIC 4). "Data
-model" below is in-memory app state only.
+The app stays **fully client-side**. There are **no HTTP API endpoints** and **no
+persisted data-model migrations** in this EPIC. The "data model" below is
+in-memory React state, shaped forward-compatibly with the plan's `Riff.notes` so
+EPIC 4 can persist it without reshaping.
 
-### Stack and tooling
-- **Build:** Vite + React 18 + TypeScript (strict mode on).
-- **Styling:** plain CSS (CSS modules or a single global stylesheet with CSS
-  variables). Do not add a component/design-system framework for these screens
-  (that would be gold-plating past the bar).
-- **Testing:** Vitest + React Testing Library (jsdom) for unit/component;
-  Playwright for end-to-end and the network/no-upload assertion.
-- **Node:** pin a current LTS in `.nvmrc` and in the Docker build stage.
-
-### Directory layout (target)
+### The note data model (in-memory)
+Add `src/audio/note.ts`:
+```ts
+export interface Note {
+  id: string;        // stable UI id for editing/keys; EPIC 4 may drop it on persist
+  midi: number;      // MIDI number, integer, clamped to [MIDI_MIN, MIDI_MAX]
+  startSec: number;  // seconds RELATIVE TO REGION START (0 = region start)
+  durSec: number;    // seconds, > 0
+  confidence: number;// 0..1, from the model; edited/added notes use 1
+  edited: boolean;   // true if the user changed or added this note
+}
+export const MIDI_MIN = 28; // E1, below a 4-string bass low E, generous floor
+export const MIDI_MAX = 96; // C7, generous ceiling for guitar
 ```
-/                         repo root
-  Dockerfile
-  docker-compose.staging.yml
-  nginx.conf
-  docker-entrypoint.sh          # generates runtime config.js from env, then execs nginx
-  .dockerignore
-  .env.example                  # placeholders only, never real secrets
-  .gitignore                    # .env is ignored
-  .nvmrc
-  index.html                    # includes a critical app-shell (see below)
-  package.json
-  tsconfig.json
-  vite.config.ts
-  README.md
-  public/
-    config.js                   # dev placeholder; in the container it is regenerated at start
-    sample/                      # bundled sample audio clip for the sample entry point
-  src/
-    main.tsx
-    App.tsx
-    runtime-config.ts           # reads window.__NEEDLE_DROP_ENV__ with safe defaults
-    observability/
-      sentry.ts                 # init only if a DSN is present; no-op otherwise
-      umami.ts                  # inject script only if configured; no-op otherwise
-    audio/
-      decode.ts                 # File/ArrayBuffer -> AudioBuffer (decodeAudioData)
-      peaks.ts                  # AudioBuffer -> downsampled peak array for the waveform
-      loop-player.ts            # gapless looping + speed via Web Audio
-      timing.ts                 # bars/tempo <-> seconds math, snap helpers
-    components/
-      LoopRoom.tsx
-      DropZone.tsx
-      Waveform.tsx              # canvas render + draggable region handles
-      LoopControls.tsx          # tempo, bars, snap toggle, speed, transport
-      states/
-        EmptyState.tsx
-        LoadingState.tsx        # layout-stable skeleton
-        ErrorState.tsx          # product-voice message + next step
-    styles/
-      global.css
-  tests/
-    unit/                        # vitest
-    e2e/                         # playwright
-    fixtures/                    # a tiny audio file for tests
-```
+Times are **relative to the region start**, so a chart is portable and aligns to
+the region regardless of where in the song the region sits. Helpers
+(`midiToFreq`, `midiToName`) go in `src/audio/pitch.ts` as pure functions:
+`midiToFreq(m) = 440 * 2 ** ((m - 69) / 12)`.
 
-### Runtime config and observability (graceful absence)
-Because the SPA is static, environment values are injected **at container
-start**, not baked into the bundle:
-- `docker-entrypoint.sh` reads `SENTRY_DSN`, `UMAMI_WEBSITE_ID`, `UMAMI_URL` from
-  the environment and writes `/usr/share/nginx/html/config.js` as:
-  ```js
-  window.__NEEDLE_DROP_ENV__ = {
-    SENTRY_DSN: "<value or empty>",
-    UMAMI_WEBSITE_ID: "<value or empty>",
-    UMAMI_URL: "<value or empty>"
-  };
-  ```
-  Then it `exec`s nginx. Values are written safely (empty string when unset; no
-  shell-injection of unescaped content).
-- `index.html` loads `/config.js` **before** the app bundle.
-- `src/runtime-config.ts` reads `window.__NEEDLE_DROP_ENV__` with an empty-object
-  fallback so the app works in dev where `public/config.js` may define nothing.
-- `observability/sentry.ts` initializes the Sentry/GlitchTip client **only** when
-  `SENTRY_DSN` is a non-empty string. Otherwise it is a no-op and the app runs
-  normally. No PII in any captured event (do not attach file names or audio to
-  Sentry context).
-- `observability/umami.ts` injects the Umami script tag **only** when both
-  `UMAMI_URL` and `UMAMI_WEBSITE_ID` are non-empty. Otherwise no script is added.
+### Files / modules to touch
 
-### Audio engine
-- **Decode (`decode.ts`):** read the `File` via `arrayBuffer()` and call
-  `AudioContext.decodeAudioData`. No `fetch`/`XHR`/upload. Accept `mp3`, `wav`,
-  `ogg`, `flac`; when the browser cannot decode a format, surface the designed
-  error state (see below). Guard against oversized files with a sensible cap
-  (for example reject > ~60 MB) and say so in the product voice.
-- **Peaks (`peaks.ts`):** downsample the decoded buffer to a fixed number of
-  min/max peak pairs sized to the canvas width. Pure function, unit-tested.
-- **Gapless loop (`loop-player.ts`):** use a single `AudioBufferSourceNode` with
-  `loop = true`, `loopStart` and `loopEnd` set to the region bounds. This gives
-  **sample-accurate, click-free** looping natively. `playbackRate` sets speed in
-  `[0.5, 1.0]`. Changing region bounds or speed while playing must not introduce
-  a gap or a click (recreate the source node started at the correct offset, or
-  update `loopStart`/`loopEnd`/`playbackRate` live). Expose play, pause, stop,
-  set-region, set-rate. Slowing playback lowers pitch (documented, in scope).
-- **Timing (`timing.ts`):** pure helpers.
-  - `barsToSeconds(bars, bpm, beatsPerBar) = bars * beatsPerBar * (60 / bpm)`.
-  - `snapRegionToBars(startSec, bars, bpm, beatsPerBar, duration)` returns a
-    region whose length equals `barsToSeconds(...)`, clamped to the buffer
-    duration, optionally quantizing `startSec` to the nearest beat.
-  - Default `beatsPerBar = 4`, default `bars = 2`, default `bpm = 120` (editable).
-    Beats-per-bar may be a fixed 4/4 assumption for this EPIC; if exposed, keep
-    it a secondary control subordinate to tempo and bars.
+New:
+- `src/audio/pitch.ts` — pure: `midiToFreq`, `midiToName` (e.g. `40 -> "E2"`).
+- `src/audio/note.ts` — the `Note` type and constants above.
+- `src/audio/monophonic.ts` — **pure** reduction of poly note events to a
+  monophonic, non-overlapping `Note[]`. Unit-tested. See algorithm below.
+- `src/audio/transcribe.ts` — the transcription boundary. Extracts the region
+  samples from the source `AudioBuffer`, downmixes to mono, resamples to 22050
+  Hz, runs Basic Pitch, maps raw events to `Note[]`, then applies the monophonic
+  reduction. Exposes a small `Transcriber` interface so tests can inject a fake
+  (see Test plan).
+- `src/audio/transcribe.worker.ts` — Web Worker that runs the Basic Pitch / tfjs
+  inference off the main thread and posts progress + results. (Rationale under
+  "Keeping controls alive.")
+- `src/audio/note-synth.ts` — schedule a `Note[]` as synthesized tones over Web
+  Audio. Split into a **pure** `planSchedule(notes, startTimeSec, opts)` that
+  returns `{freq, startAt, stopAt}[]` (unit-tested) and a thin shell that wires
+  `OscillatorNode` + `GainNode` per planned tone. Supports "play alone" and
+  "play against the loop", plus stop.
+- `src/components/ChartPanel.tsx` — the chart surface: piano-roll, audition
+  controls, edit controls, the scope statement, and the two designed states.
+- `src/components/PianoRoll.tsx` — canvas or SVG render of the notes over a
+  region-length time axis and a pitch axis; supports selecting a note and the
+  edit interactions (keyboard-reachable).
+- `src/components/states/TranscribingState.tsx` — layout-stable progress state.
+- `src/components/states/NoPitchState.tsx` — the "pick a clearer part" state.
 
-### Loop Room UI and interaction
-- One screen. **One obvious primary action** at each moment:
-  - Empty: the primary action is "load a song" (the drop zone / file picker).
-  - Loaded: the primary action is play/loop.
-- **Drop zone / file input:** drag-and-drop plus a visible file button (drag-drop
-  alone is not keyboard-reachable, so the button is required). No network call on
-  load.
-- **Waveform:** canvas; draggable region with two handles; the region is also
-  adjustable by keyboard (focusable handles, arrow keys nudge, with visible
-  focus). Region reflects snap when snap is on.
-- **Loop controls:** tempo (numeric), bars (numeric, default 2), snap toggle,
-  speed control (slider or stepped control across 50%–100% with the current
-  percentage shown), and transport (play/pause/stop). Every control has a
-  `<label>` or `aria-label`, a visible focus state, and a ~44px touch target.
-- **Feedback within 100ms:** pressed/active states on all controls; the play
-  button reflects state immediately; dragging the region updates the visible
-  region in real time.
+Changed:
+- `src/components/LoopRoom.tsx` — hold the decoded `AudioBuffer` in a ref (today
+  it lives only inside `LoopPlayer`), add a chart step to the state machine, add
+  the primary action that starts transcription, own the `Note[]` chart state and
+  the region snapshot the chart was transcribed from, and pass `LoopPlayer` to
+  the chart panel for audition-against-loop.
+- `src/styles/global.css` — piano-roll, chart panel, and new-state styles, still
+  mobile-first and reusing the existing CSS variables and control classes.
+- `package.json` — add `@spotify/basic-pitch` and its `@tensorflow/tfjs` peer.
+  Both are **dynamically imported** inside the worker so they stay out of the
+  initial bundle (QUALITY BAR §1).
+- Build config (`vite.config.ts` and/or a copy step) — make the Basic Pitch model
+  assets available **same-origin** under a static path (e.g.
+  `public/models/basic-pitch/`) and load the model from that path. Verify the
+  installed package's actual model location and export names at implement time
+  and load from the local copy, so no audio and no model request goes to a third
+  party.
 
-### Designed states (QUALITY BAR §3)
-- **Empty:** explains what the Loop Room is for and the first action, and shows
-  the sample entry point. Positive phrasing. Example copy (already swept):
-  - Heading: `Drop in a song to start`
-  - Body: `Pick a track from your own files. It stays on your machine.`
-  - Primary: `Choose a song` (opens file picker) / drop target
-  - Secondary: `Play a sample loop` (loads the bundled sample clip)
-- **Loading:** while decoding, hold the layout steady with a skeleton where the
-  waveform and controls will appear. No white screen, no unbounded spinner.
-  Example: `Reading your song…`
-- **Error:** product voice, says what happened and the next step, no stack trace,
-  no error code. Examples (already swept):
-  - Unsupported/undecodable file: `That file would not open. Try an mp3, wav,
-    ogg, or flac.`
-  - Too large: `That file is large. Try a shorter clip or a smaller file.`
+### Getting the region audio to the model
+`LoopRoom` already decodes to an `AudioBuffer` (currently only stored inside
+`LoopPlayer`). Keep a `bufferRef` to that `AudioBuffer`. On transcribe:
+1. Slice `[region.startSec, region.endSec]` from the buffer, downmixing all
+   channels to mono.
+2. Resample to **22050 Hz** using an `OfflineAudioContext(1, ceil(len*22050),
+   22050)` render (Basic Pitch expects 22050 Hz mono).
+3. Hand the mono Float32Array (transferable) to the worker.
 
-### First-paint / perceived speed (QUALITY BAR §1)
-- `index.html` includes a small **critical app shell** in the body: the product
-  name and the empty-state heading/primary action, styled inline so the user
-  sees real, branded content immediately, even before the JS bundle parses.
-  React mounts and replaces it. This guarantees "real content within about a
-  second, never a blank page" including on the container root.
-- Keep the initial bundle lean; audio and any heavy work load on demand.
+Region times are absolute in the buffer; the resulting note `startSec` values are
+made **relative to the region start** (subtract `region.startSec` equivalent, i.e.
+the model sees only the slice so its times already start at 0).
 
-### Deploy: Dockerfile, nginx, compose
-- **Dockerfile** (multi-stage): stage 1 builds with Node LTS
-  (`npm ci && npm run build` → `dist/`); stage 2 is `nginx:alpine`, copies `dist`
-  to `/usr/share/nginx/html`, copies `nginx.conf` and `docker-entrypoint.sh`,
-  sets the entrypoint to generate `config.js` then run nginx in the foreground.
-- **nginx.conf:** serve static assets with gzip and sensible cache headers;
-  SPA fallback `try_files $uri /index.html;`; **`config.js` must not be cached**
-  (so runtime env changes take effect); listen on port **80** inside the
-  container.
-- **docker-compose.staging.yml** at repo root: builds from the Dockerfile, maps a
-  documented host port to container 80, and passes `SENTRY_DSN`,
-  `UMAMI_WEBSITE_ID`, `UMAMI_URL` through from the environment (default empty).
-  Documented port: **`${NEEDLE_DROP_PORT:-8080}` → 80** (host 8080 by default).
-  Document this exact port in the README. If the factory staging deploy contract
-  mandates a specific port, set it here and in the README to match.
-- **.env.example:** placeholders only for `SENTRY_DSN`, `UMAMI_WEBSITE_ID`,
-  `UMAMI_URL`, `NEEDLE_DROP_PORT`. `.env` stays in `.gitignore`.
+### Basic Pitch usage (verify against the installed version)
+Use `@spotify/basic-pitch`'s model + the `outputToNotesPoly` /
+`noteFramesToTime` / `addPitchBendsToNoteEvents` helpers to produce note events
+`{ startTimeSeconds, durationSeconds, pitchMidi, amplitude }`, then map to `Note`
+(`midi = pitchMidi`, `startSec = startTimeSeconds`, `durSec = durationSeconds`,
+`confidence = amplitude` clamped to 0..1, `edited = false`). `evaluateModel`
+reports progress `0..1` via its callback; forward that to the UI. Treat the exact
+import names and thresholds as version-specific: confirm them against the package
+actually installed, do not hardcode from memory. Choose onset/frame thresholds
+that favor **clean, confident** notes over completeness (a missed note the user
+adds by hand is better than a phantom note that erodes trust).
+
+### Monophonic reduction (the mandatory core — pure and tested)
+`reduceToMonophonic(events): Note[]` MUST guarantee the output notes **never
+overlap in time** — one note per moment. Specify and implement it deterministically:
+1. Sort events by `startSec` (tie-break by higher `confidence`, then lower
+   `midi`).
+2. Walk left to right maintaining the last kept note's end. When an incoming
+   event starts before the current kept note ends (overlap):
+   - keep the note with higher confidence; if the incoming note wins and its
+     onset is clearly later, truncate the previous note to end at the incoming
+     onset rather than dropping it, so the timeline stays continuous;
+   - otherwise drop the incoming (lower-confidence) overlapping note.
+3. Drop notes shorter than a minimum audible length (e.g. < ~40 ms) and notes
+   outside `[MIDI_MIN, MIDI_MAX]`.
+4. Assign stable `id`s.
+The exact tie-break/truncate policy is the implementer's to tune, but the
+**post-condition is testable and binding**: for all `i`, `notes[i].startSec +
+notes[i].durSec <= notes[i+1].startSec` (no overlaps), and notes are sorted by
+`startSec`. Unit tests assert this on hand-built overlapping inputs.
+
+### "No clear pitch" detection
+After reduction, treat the region as having no clear line when the result is
+empty OR the total voiced duration is a negligible fraction of the region (e.g.
+kept-note duration sums to < ~10% of region length, tune to the sample). In that
+case render `NoPitchState` (not the piano-roll). This is the guard against
+"zero notes presented as success". The threshold is defined in one place and
+unit-tested via `isClearEnough(notes, regionLen)`.
+
+### Audition (`note-synth.ts`)
+- **Play alone:** schedule each note as a short tone (e.g. `triangle` oscillator
+  through a per-note gain envelope to avoid clicks), `startAt = ctx.currentTime +
+  note.startSec`, `stopAt = startAt + note.durSec`, `freq = midiToFreq(midi)`.
+- **Play against the loop:** start the existing `LoopPlayer` at the region start
+  and schedule the synth notes time-aligned to that same start, so the player
+  hears their notes over the record. Audition plays at **true tempo and pitch**
+  (100%), independent of the slow-down slider, so the pitch comparison is honest
+  (the slider lowers the record's pitch, which would make an aligned comparison
+  misleading). A single aligned pass is sufficient; looping the synth in sync is
+  allowed but not required.
+- Provide **stop**; auditioning must be interruptible and must not leave
+  oscillators running. Auditioning and the Loop Room's own transport must not
+  fight over the audio graph (stopping one stops its own nodes only).
+- The pure `planSchedule` is unit-tested; the oscillator shell is thin.
+
+### Editing interactions (piano-roll)
+All edits mutate the owned `Note[]` and set `edited: true` on the touched note:
+- **Change pitch:** move a selected note up/down by a semitone (buttons and
+  Arrow Up/Down when focused), clamped to `[MIDI_MIN, MIDI_MAX]`. Dragging
+  vertically is a nice-to-have, not required; the keyboard path is required.
+- **Nudge timing:** move a selected note's `startSec` earlier/later by a small
+  step (e.g. 10 ms, larger with a modifier), clamped to `[0, regionLen - durSec]`
+  (buttons and Arrow Left/Right when focused).
+- **Delete:** remove the selected note (button and Delete/Backspace key).
+- **Add:** add a note at a chosen time/pitch (e.g. click/tap an empty spot on the
+  roll, or an "Add note" button that inserts at the playhead/region start at a
+  default pitch), then it is editable like any other. Added notes get
+  `confidence: 1`, `edited: true`, and the reduction's non-overlap invariant is
+  preserved on add (adding into an occupied moment either shifts or is rejected
+  with feedback, never creates an overlap).
+- Every edit gives feedback within 100ms (selection highlight, immediate re-render
+  of the moved/added note).
+
+### Keeping the loop controls alive during transcription (QUALITY BAR §1)
+Basic Pitch / tfjs inference is heavy and would jank the main thread. Run it in
+`transcribe.worker.ts` so:
+- The main thread stays responsive: the loop transport (play/pause/stop, speed,
+  region) keeps working while transcription runs. This is a **binding, testable**
+  requirement ("never freezes the loop controls").
+- Web Audio playback already runs on the audio thread, so the loop keeps sounding
+  regardless; the requirement here is that the *controls* stay interactive.
+- The `TranscribingState` shows honest progress (the model's `0..1` callback,
+  forwarded from the worker) with the layout held steady, and offers a way out
+  (a cancel/back control), never an unbounded spinner with no exit.
+
+### Chart step in the Loop Room state machine
+Extend `LoopRoom`'s status beyond `empty | loading | loaded | error`:
+- In `loaded`, the **primary action** becomes **"Find the notes"** (transcribe
+  the current region). Looping stays available as a secondary reference control;
+  keep exactly one visually dominant primary action per QUALITY BAR §7.
+- Transcribing → `TranscribingState` overlay/panel (controls still live).
+- On result: if clear, show `ChartPanel` (piano-roll + audition + edit + scope
+  statement); if not, show `NoPitchState` with a "pick a clearer part" path back
+  to the region controls.
+- The chart is transcribed for a **specific region snapshot**. If the user
+  changes the region afterward, the chart is stale: offer "Find the notes again"
+  rather than silently keeping a mismatched chart. Do not auto-retranscribe on
+  every drag (expensive); re-run only on explicit action.
+- Chart `Note[]` and the region snapshot live in `LoopRoom` state (lifted), so
+  edits survive leaving and re-entering the chart panel and are the single source
+  of truth EPIC 3's practice step will read.
+
+### Copy (already swept — no em/en dashes, positive, plain)
+- Primary action (loaded): `Find the notes`
+- Scope statement (always visible on the chart): `Needle Drop reads one note at a
+  time. Best on single-note riffs and basslines.`
+- Transcribing state heading: `Reading the notes` with a progress indicator and a
+  `Cancel` control.
+- No-clear-pitch state: heading `This part is hard to read`, body `Pick a part
+  with one clear note at a time, like a bassline or a single-string riff.`,
+  action `Pick another part`.
+- Audition controls: `Play the notes` (alone), `Play with the song` (against the
+  loop), `Stop`.
+- Edit controls: `Up`, `Down` (pitch), `Nudge left`, `Nudge right` (timing),
+  `Delete`, `Add note`.
+- Empty chart after edits (user deleted everything): `Add a note, or read the
+  notes again.` (positive, actionable).
+Sweep every string added or edited in this EPIC before finishing.
+
+### Security / hygiene (static client app)
+- No new network surface. The model weights load from the app's own origin as
+  static assets; no audio and no model fetch goes to a third party (verifiable in
+  the network panel, same trust primitive as EPIC 1).
+- Validate all edits at the boundary: clamp `midi` to `[MIDI_MIN, MIDI_MAX]`,
+  clamp timing into the region, reject non-finite inputs.
+- No PII in Sentry: never attach file names, audio, or note data to captured
+  events (unchanged from EPIC 1).
 
 ---
 
 ## Ordered task list (each with acceptance criteria)
 
-### T1 — Scaffold the SPA and tooling
-Scaffold Vite + React + TS (strict), the directory layout above, `global.css`
-with mobile-first CSS variables, `index.html` with the critical app shell, and
-Vitest + Playwright configured with npm scripts (`dev`, `build`, `preview`,
-`test`, `test:e2e`). Add `.nvmrc`, `.gitignore` (ignores `.env`, `node_modules`,
-`dist`).
-- **AC:** `npm ci && npm run build` produces `dist/` with an `index.html` that
-  contains visible app-shell content (product name + primary action) in the HTML
-  body before any script runs.
-- **AC:** `npm run test` and `npm run test:e2e` are wired and runnable.
+### T1 — Note model, pitch helpers, monophonic reduction (pure core)
+Add `note.ts`, `pitch.ts`, `monophonic.ts`.
+- **AC:** `midiToFreq`/`midiToName` are pure and unit-tested (A4 = 69 → 440 Hz;
+  40 → "E2").
+- **AC:** `reduceToMonophonic` on overlapping inputs returns notes sorted by
+  `startSec` with **no overlaps** (`notes[i].startSec + notes[i].durSec <=
+  notes[i+1].startSec`), drops sub-minimum and out-of-range notes, and is
+  deterministic. Unit-tested with hand-built overlaps.
+- **AC:** `isClearEnough(notes, regionLen)` returns false for empty and
+  negligible-voicing inputs, true for a real line. Unit-tested.
 
-### T2 — Runtime config + optional observability
-Implement `runtime-config.ts`, `observability/sentry.ts`, `observability/umami.ts`,
-`public/config.js` (dev placeholder), and load `config.js` before the bundle.
-- **AC:** With `SENTRY_DSN`, `UMAMI_WEBSITE_ID`, `UMAMI_URL` all unset, the app
-  loads and the Loop Room works with no console errors and no attempt to reach
-  Sentry or Umami. (Maps to planner AC: runs correctly when env unset.)
-- **AC:** When a DSN is present, Sentry initializes once; when both Umami values
-  are present, exactly one Umami script tag is injected. No PII (no file names,
-  no audio) is sent.
+### T2 — Transcription boundary + worker (in-browser, off main thread)
+Add `transcribe.ts` (region slice → mono → 22050 Hz resample → Basic Pitch →
+`Note[]` → reduction) and `transcribe.worker.ts`. Add the deps, dynamically
+imported in the worker; make the model assets same-origin.
+- **AC:** Running transcription on a loop region produces a monophonic `Note[]`
+  whose times are within `[0, regionLen]`, computed **entirely in-browser** with
+  no audio and no model request leaving the origin. (Maps to planner AC 1.)
+- **AC:** Transcription runs in a worker; the loop transport controls remain
+  interactive throughout (main thread not blocked). (Maps to planner AC 4.)
+- **AC:** Initial app bundle does not include tfjs/basic-pitch (they load on
+  demand); first paint is unaffected.
 
-### T3 — Audio engine
-Implement `decode.ts`, `peaks.ts`, `timing.ts`, `loop-player.ts`.
-- **AC:** `barsToSeconds` and `snapRegionToBars` are pure and unit-tested,
-  including two-bars-at-a-given-tempo and clamping to buffer duration.
-- **AC:** `peaks.ts` returns a deterministic downsampled array for a known
-  buffer (unit-tested).
-- **AC:** `loop-player.ts` loops a region with `loop=true` and correct
-  `loopStart`/`loopEnd`, supports `playbackRate` in `[0.5, 1.0]`, and changing
-  region or speed while playing produces no gap or click (verified by test where
-  feasible and by the e2e/manual loop check).
+### T3 — Piano-roll render + chart step wiring
+Add `PianoRoll.tsx` and `ChartPanel.tsx`; wire `LoopRoom` to hold the buffer,
+the chart state, and the region snapshot; add the `Find the notes` primary action.
+- **AC:** The detected notes render on a piano-roll aligned to the region (time
+  on X, pitch on Y), with the single-note scope statement visible. (Maps to
+  planner AC 5, scope-statement half.)
+- **AC:** Exactly one dominant primary action per state; looping stays available
+  as reference during and after transcription.
 
-### T4 — Loop Room: load file (no upload), waveform, sample entry point
-Implement `DropZone.tsx`, `Waveform.tsx`, wire decode → peaks → render, and the
-"Play a sample loop" button loading `public/sample/`.
-- **AC:** Loading a local file shows its waveform, and **no network request
-  carries the audio** (verifiable in the network panel and asserted in e2e).
-  (Maps to planner AC: waveform + no upload.)
-- **AC:** The sample button loads the bundled clip into the same path and renders
-  its waveform.
+### T4 — Audition (alone and against the loop)
+Add `note-synth.ts` and the audition controls.
+- **AC:** The user plays the detected notes back as tones **alone**, and **over
+  the loop** time-aligned to the region, at true pitch; `Stop` halts audition
+  cleanly. (Maps to planner AC 2.)
+- **AC:** `planSchedule` is pure and unit-tested (correct freqs and start/stop
+  times for a known note list and start time).
 
-### T5 — Loop region drag + tempo/bars snap + speed + gapless loop
-Implement `LoopControls.tsx`, region dragging, snap-to-bars, speed control, and
-transport wired to `loop-player.ts`.
-- **AC:** The user drags a loop region, sets tempo and bars to snap it to two
-  bars, and hears it loop **with no gap** at a chosen speed between **50% and
-  100%**. (Maps to planner AC: drag/snap/gapless/speed.)
-- **AC:** Snap sets the region length to exactly `bars` bars at the given tempo;
-  turning snap off restores free dragging.
+### T5 — Editing (pitch, timing, delete, add) carried into the chart state
+Wire the edit interactions to the owned `Note[]`.
+- **AC:** The user can delete a note, change a note's pitch (± semitone,
+  clamped), nudge a note's timing (clamped to the region), and add a missed note;
+  each edit is reflected immediately and sets `edited: true`. (Maps to planner
+  AC 3.)
+- **AC:** Edits persist in `LoopRoom`'s chart state across leaving and
+  re-entering the chart panel (they are the source of truth the practice step
+  will read). No overlap is ever created by an add/nudge. (Maps to planner AC 3,
+  "carry into the practice step".)
 
-### T6 — Designed states, mobile-first, accessibility
-Implement `EmptyState`, `LoadingState`, `ErrorState`; make the whole screen
-mobile-first at 390px; ensure keyboard reach, focus states, labels, contrast.
-- **AC:** Empty state tells the user to drop a song and shows the sample entry
-  point; loading holds layout steady; errors speak in the product voice with a
-  next step. (Maps to planner AC: designed states.)
-- **AC:** At a 390px viewport there is no horizontal scroll; touch targets are
-  ~44px; there is one obvious primary action; focus states are visible; every
-  control is reachable and operable by keyboard. (Maps to planner AC: mobile +
-  a11y.)
+### T6 — Designed transcribing and no-clear-pitch states
+Add `TranscribingState.tsx` and `NoPitchState.tsx`; wire both into the state
+machine.
+- **AC:** During transcription a designed progress state shows honest progress
+  with the layout held steady and a way out, and the loop controls never freeze.
+  (Maps to planner AC 4.)
+- **AC:** A region with no clear pitch shows the designed "pick a clearer part"
+  state, never a crash and never zero notes presented as a successful chart.
+  (Maps to planner AC 6.)
 
-### T7 — Deploy scaffold
-Add `Dockerfile`, `nginx.conf`, `docker-entrypoint.sh`, `.dockerignore`,
-`docker-compose.staging.yml`, `.env.example`.
-- **AC:** `docker compose -f docker-compose.staging.yml up` builds the image and
-  serves the SPA on the documented port (`8080` by default); the root shows real
-  content within about a second, never a blank page. (Maps to planner AC: compose
-  builds + serves + fast first paint.)
-- **AC:** `Dockerfile` and `docker-compose.staging.yml` exist at the repo root
-  and are the path staging uses. (Maps to planner AC.)
-- **AC:** With observability env unset, the served app runs correctly; with it
-  set, `config.js` reflects the values and is served uncached.
-
-### T8 — Stranger-facing README
-Rewrite `README.md`: what Needle Drop is (2–3 plain sentences), how to run it
-(dev commands and the exact `docker compose` command with the documented port,
-**verified against the actual compose file**), and how to contribute (where code
-lives, how to run tests). No factory internals (no agent/task/pipeline jargon,
-no factory paths or services).
-- **AC:** A stranger can understand, run, and contribute from the README, and the
-  run commands match the real compose files. (Maps to planner AC: README.)
-
-### T9 — Tests and copy sweep
-Write the tests in the test plan below and run the QUALITY BAR §8 copy sweep over
-every user-visible string added in this EPIC.
-- **AC:** All automated tests pass under `npm test` / `npm run test:e2e`.
-- **AC:** No user-visible string contains `—` or `–`, any banned vocabulary, or
-  negative empty-state phrasing.
+### T7 — Mobile, accessibility, and copy sweep
+Make the chart panel and piano-roll usable at 390px; every control labeled,
+keyboard-reachable, with visible focus; run the QUALITY BAR §8 sweep.
+- **AC:** At 390px there is no horizontal scroll; the piano-roll is usable; edit
+  and audition controls are ~44px and keyboard-operable with visible focus.
+- **AC:** No user-visible string added or edited in this EPIC contains `—`, `–`,
+  banned vocabulary, or negative empty-state phrasing.
 
 ---
 
 ## Test plan (which tests prove each criterion)
 
 ### Unit (Vitest)
-- `timing.ts`: `barsToSeconds` correctness; `snapRegionToBars` produces a
-  two-bar-length region at a given BPM and clamps to buffer duration. → proves T3
-  and the snap half of the drag/snap AC.
-- `peaks.ts`: deterministic downsampling for a synthetic buffer. → proves
-  waveform data path.
-- `runtime-config.ts`: returns safe empty defaults when
-  `window.__NEEDLE_DROP_ENV__` is absent or partial. → proves graceful-absence
-  AC.
-- `observability/sentry.ts` + `umami.ts`: init is skipped when values are empty,
-  runs once when present, and no PII fields are attached. → proves env-unset and
-  no-PII ACs.
+- `pitch.ts`: `midiToFreq`, `midiToName` correctness. → T1.
+- `monophonic.ts`: on hand-built overlapping event lists, output is sorted and
+  **non-overlapping**, sub-minimum and out-of-range notes dropped, deterministic
+  across runs. This is the core proof of "monophonic enforcement is real". →
+  planner AC 5.
+- `monophonic.ts` / `isClearEnough`: empty and negligible inputs → false; a real
+  line → true. → planner AC 6 (the detection half).
+- `note-synth.ts` `planSchedule`: correct freqs and start/stop offsets for a known
+  `Note[]` and start time. → T4.
+- Edit reducers (pure functions behind the panel, e.g. `applyPitch`, `applyNudge`,
+  `applyDelete`, `applyAdd`): clamp to range/region, set `edited`, and preserve
+  the non-overlap invariant. → planner AC 3.
 
-### Component (Vitest + React Testing Library, jsdom)
-- `EmptyState`: renders the drop instruction and the sample entry point; copy is
-  positive. → proves empty-state AC.
-- `LoadingState`: renders a layout-stable skeleton (waveform/control placeholders
-  present). → proves loading-state AC.
-- `ErrorState`: given an unsupported-file error, renders product-voice message
-  with a next step, no stack trace/error code. → proves error-state AC.
-- `LoopControls`: tempo, bars, snap, speed, transport are all present, labeled,
-  and keyboard-focusable; speed is constrained to 50%–100%. → proves a11y +
-  speed-range ACs.
+### Component (Vitest + RTL, jsdom — with an injected fake `Transcriber`)
+jsdom has no WebGL/Web Audio, so component tests inject a fake `Transcriber`
+returning known events (real inference is proven in e2e). Tests:
+- `ChartPanel` renders the piano-roll for a known chart and shows the single-note
+  scope statement. → planner AC 5.
+- Edit flow: delete removes a note; pitch up/down changes `midi` and clamps at
+  the bounds; nudge changes `startSec` and clamps at the region edges; add
+  inserts a note. Each updates the visible chart. → planner AC 3.
+- Edits persist when the panel is unmounted and remounted from the same
+  `LoopRoom` state (source-of-truth proof). → planner AC 3 ("carry into
+  practice").
+- `NoPitchState` renders (product voice, a next step) when the fake transcriber
+  returns an empty/negligible result; the piano-roll is not shown and no crash
+  occurs. → planner AC 6.
+- `TranscribingState` renders a layout-stable progress surface with a cancel
+  path. → planner AC 4.
 
-### End-to-end (Playwright)
-- **Load + waveform + no upload:** load a fixture audio file from
-  `tests/fixtures`; assert the waveform canvas renders; intercept all requests
-  and assert none carries the audio (no outbound request is triggered by loading
-  the file; no request body contains the file bytes; no external-host request).
-  → proves waveform + no-upload AC (the differentiator's trust primitive #2).
-- **Drag / snap / speed / gapless:** load the fixture, drag a region, set tempo
-  and bars, enable snap, set speed within 50%–100%, start playback; assert the
-  region length equals two bars at the tempo and that playback is active and
-  looping. (Gapless/click-free is verified by test assertions where feasible and
-  by the manual loop check below.) → proves drag/snap/gapless/speed AC.
-- **390px viewport:** set viewport to 390px wide; assert no horizontal overflow
-  (`document.scrollWidth <= innerWidth`); assert primary action is visible and
-  focusable; tab through controls and assert each receives visible focus. →
-  proves mobile + a11y AC.
-- **Env-unset run:** run the built app (via `vite preview` or the container) with
-  no observability env; assert no console errors and no requests to Sentry/Umami.
-  → proves graceful-absence AC.
-
-### Build / deploy verification
-- **Automated:** an e2e or CI step runs `npm run build` then serves `dist/` (via
-  `vite preview` or the built container) and asserts the root returns HTML whose
-  body contains the app-shell content (fast, non-blank first paint) and that the
-  SPA fallback route serves `index.html`.
-- **Documented manual check** (state in the README/run notes, since Docker may
-  not run in the unit CI): `docker compose -f docker-compose.staging.yml up`
-  builds and serves on `http://localhost:8080`, the root shows the branded empty
-  state within about a second, and toggling `SENTRY_DSN`/Umami env changes
-  `config.js` while the app still runs when they are unset. → proves the compose
-  ACs.
+### End-to-end (Playwright — real Basic Pitch in real Chromium)
+- **Real in-browser transcription on the bundled sample:** load the bundled
+  monophonic bass sample (`public/sample/riff.wav`, a clean single-note walking
+  line), snap the region, run `Find the notes`. Assert (generous timeout): a
+  piano-roll with **≥ 1 note** appears, the notes are **non-overlapping** and
+  **within the region**, and no audio/model request left the origin (network
+  panel assertion, as in EPIC 1). This proves planner AC 1 with the real model,
+  in-browser, honoring the differentiator's honesty requirement. If the bundled
+  sample proves flaky for the model, add a purpose-built clean monophonic fixture
+  under `tests/fixtures/` (a synthesized single-note phrase) and transcribe that;
+  do not weaken the assertion.
+- **Controls stay alive during transcription:** start transcription and, while the
+  progress state is showing, operate a loop transport control (e.g. toggle
+  play/pause or move the region) and assert it responds. → planner AC 4.
+- **Audition:** after a chart appears, click `Play the notes` and `Play with the
+  song`; assert audition starts and `Stop` ends it (assert via state/UI, since
+  audio output is not directly observable). → planner AC 2.
+- **No-clear-pitch on a silent/noisy region:** drive a region known to yield no
+  line (e.g. a near-silent fixture) and assert the `NoPitchState` appears and the
+  app does not crash and shows no piano-roll. → planner AC 6.
+- **390px:** at a 390px viewport, the chart panel has no horizontal overflow and
+  the primary controls are visible and focusable. → T7.
 
 ### Copy sweep (QUALITY BAR §8) — part of DONE
-Mechanically search every user-visible string added in this EPIC (components,
-`index.html`, empty/loading/error copy, README, any sample metadata) for: the
-characters `—` and `–`; the banned vocabulary ("seamlessly", "effortlessly",
-"unlock", "elevate", "empower", "leverage", "robust", "dive in", and kin); and
-negative empty-state phrasing ("You don't have", "No … yet", "Nothing … here",
-"Unable to", "Something went wrong"). Every hit is a defect fixed in the same
-run.
+Mechanically search every user-visible string added or edited in this EPIC
+(`ChartPanel`, `PianoRoll`, `TranscribingState`, `NoPitchState`, the new
+`LoopRoom` action, any labels) for `—`/`–`, banned vocabulary, and negative
+empty-state phrasing. Every hit is a defect fixed in the same run.
 
 ---
 
 ## Definition of done
-All planner acceptance criteria are provable via the tests above, the QUALITY BAR
-is met for the Loop Room (perceived speed, mobile-first, designed states,
-first-run reachability via the sample, security hygiene appropriate to a
-static client-only app, accessibility, radically simple interface, human copy,
-stranger README), no non-goal was built, and the copy sweep is clean.
+All six planner acceptance criteria are provable via the tests above:
+transcription yields a monophonic in-browser note timeline within the region
+(e2e, real model); the notes are auditionable alone and over the loop; pitch,
+timing, delete, and add edits work and are retained as the practice step's source
+of truth; a designed progress state shows during transcription and the loop
+controls never freeze; the monophonic reduction is provably non-overlapping and
+the single-note scope is stated plainly; a no-clear-pitch region shows a designed
+state, never a crash and never zero-notes-as-success. The QUALITY BAR is met for
+the chart surface (perceived speed and lazy-loaded model, mobile at 390px,
+designed transcribing/no-pitch/empty-chart states, accessibility, one primary
+action, human copy), no non-goal was built (no stem, no chords, no notation, no
+mic/verdict, no persistence), and the copy sweep is clean.
