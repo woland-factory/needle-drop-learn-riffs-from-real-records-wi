@@ -74,10 +74,21 @@ function riff() {
   return out;
 }
 
+// A few seconds of near-silence: the "no clear pitch" e2e fixture. Basic Pitch
+// finds no confident onsets here, so the app must show the designed state.
+function silence(durSec) {
+  return new Float32Array(Math.floor(durSec * SR));
+}
+
 const sampleBytes = writeWav(resolve(root, "public/sample/riff.wav"), riff());
 const toneBytes = writeWav(
   resolve(root, "tests/fixtures/tone.wav"),
   note(220, 1.0),
 );
+const silenceBytes = writeWav(
+  resolve(root, "tests/fixtures/silence.wav"),
+  silence(4.8),
+);
 console.log(`sample riff.wav: ${sampleBytes} bytes`);
 console.log(`fixture tone.wav: ${toneBytes} bytes`);
+console.log(`fixture silence.wav: ${silenceBytes} bytes`);

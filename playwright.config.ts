@@ -24,7 +24,7 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
-    env: { NODE_ENV: "production" },
+    env: { NODE_ENV: "production", NODE_OPTIONS: "--max-old-space-size=2048" },
   },
   projects: [{ name: "desktop", use: { ...devices["Desktop Chrome"] } }],
 });
