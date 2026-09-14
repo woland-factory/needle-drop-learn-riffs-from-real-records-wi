@@ -135,7 +135,7 @@ function Harness({ audition, metronome, recorder, gradeTake, onSave, onBack }: H
   );
 }
 
-async function grantAndStart(recorder: DeferredRecorder) {
+async function grantAndStart() {
   fireEvent.click(screen.getByRole("button", { name: /turn on mic/i }));
   await screen.findByRole("button", { name: /^start$/i });
   fireEvent.click(screen.getByRole("button", { name: /^start$/i }));
@@ -177,7 +177,7 @@ describe("PracticePanel cycle invariants", () => {
     render(
       <Harness audition={audition} metronome={metronome} recorder={rec} gradeTake={gradeTake} />,
     );
-    await grantAndStart(rec);
+    await grantAndStart();
 
     // Now blocked in the recording phase, waiting on the deferred take.
     await screen.findByText(/your turn/i);
@@ -200,7 +200,7 @@ describe("PracticePanel cycle invariants", () => {
     // A metronome that never resolves keeps the panel in the count-in phase.
     const metronome = new FakeMetronome(new Promise<void>(() => {}));
     render(<Harness audition={new FakeAudition()} metronome={metronome} recorder={rec} />);
-    await grantAndStart(rec);
+    await grantAndStart();
     expect(await screen.findByText(/count in/i)).toBeInTheDocument();
   });
 });
@@ -217,7 +217,7 @@ describe("PracticePanel verdict", () => {
         false,
       );
     render(<Harness audition={new FakeAudition()} metronome={new FakeMetronome()} recorder={rec} gradeTake={gradeTake} />);
-    await grantAndStart(rec);
+    await grantAndStart();
     await screen.findByText(/your turn/i);
     await act(async () => rec.finish());
 
@@ -236,7 +236,7 @@ describe("PracticePanel verdict", () => {
     render(
       <Harness audition={new FakeAudition()} metronome={new FakeMetronome()} recorder={rec} gradeTake={gradeTake} onSave={onSave} />,
     );
-    await grantAndStart(rec);
+    await grantAndStart();
     await screen.findByText(/your turn/i);
     await act(async () => rec.finish());
 
@@ -259,7 +259,7 @@ describe("PracticePanel verdict", () => {
         false,
       );
     render(<Harness audition={new FakeAudition()} metronome={new FakeMetronome()} recorder={rec} gradeTake={gradeTake} />);
-    await grantAndStart(rec);
+    await grantAndStart();
     await screen.findByText(/your turn/i);
     await act(async () => rec.finish());
     expect(await screen.findByRole("heading", { name: /i did not catch that/i })).toBeInTheDocument();
@@ -270,11 +270,12 @@ describe("PracticePanel verdict", () => {
 describe("PracticePanel tolerances", () => {
   it("re-grades the held take with the new tolerances when a setting changes", async () => {
     const rec = new DeferredRecorder();
-    const gradeTake = vi.fn(() =>
-      verdict([{ noteId: "a", status: "pass", heardMidi: 40 }, { noteId: "b", status: "pass", heardMidi: 45 }], true),
+    const gradeTake = vi.fn(
+      (_take: Take, _notes: Note[], _tol: Tolerances): PassResult =>
+        verdict([{ noteId: "a", status: "pass", heardMidi: 40 }, { noteId: "b", status: "pass", heardMidi: 45 }], true),
     );
     render(<Harness audition={new FakeAudition()} metronome={new FakeMetronome()} recorder={rec} gradeTake={gradeTake} />);
-    await grantAndStart(rec);
+    await grantAndStart();
     await screen.findByText(/your turn/i);
     await act(async () => rec.finish());
     await screen.findByRole("heading", { name: /you played it/i });
