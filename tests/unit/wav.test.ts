@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readWavPcm } from "../../src/audio/wav";
+import { readWavPcm, writeWavPcm, mixToMono } from "../../src/audio/wav";
 import { trackPitch } from "../../src/audio/pitch-track";
 import { tone, SR } from "./helpers/synth";
 
@@ -49,5 +49,49 @@ describe("readWavPcm", () => {
 
   it("throws on a non-WAVE file", () => {
     expect(() => readWavPcm(new Uint8Array([1, 2, 3, 4]))).toThrow();
+  });
+});
+
+describe("writeWavPcm", () => {
+  it("round-trips through readWavPcm within 16-bit quantization error", () => {
+    const samples = tone(52, 0.25, SR);
+    const bytes = writeWavPcm({ samples, sampleRate: SR });
+    const take = readWavPcm(new Uint8Array(bytes));
+    expect(take.sampleRate).toBe(SR);
+    expect(take.samples.length).toBe(samples.length);
+    for (let i = 0; i < samples.length; i++) {
+      expect(Math.abs(take.samples[i] - samples[i])).toBeLessThan(2 / 32768);
+    }
+  });
+
+  it("clamps samples beyond [-1, 1] instead of wrapping", () => {
+    const samples = new Float32Array([2.5, -3, 0.5]);
+    const take = readWavPcm(new Uint8Array(writeWavPcm({ samples, sampleRate: SR })));
+    expect(take.samples[0]).toBeCloseTo(1, 3);
+    expect(take.samples[1]).toBeCloseTo(-1, 3);
+    expect(take.samples[2]).toBeCloseTo(0.5, 3);
+  });
+});
+
+describe("mixToMono", () => {
+  it("averages channels over the requested frame span", () => {
+    const left = new Float32Array([0.2, 0.4, 0.6, 0.8]);
+    const right = new Float32Array([0.0, 0.2, 0.4, 0.6]);
+    const out = mixToMono([left, right], 1, 3);
+    expect(out.length).toBe(2);
+    expect(out[0]).toBeCloseTo((0.4 + 0.2) / 2, 6);
+    expect(out[1]).toBeCloseTo((0.6 + 0.4) / 2, 6);
+  });
+
+  it("clamps a span that runs past the buffer edges", () => {
+    const chan = new Float32Array([0.1, 0.2]);
+    const out = mixToMono([chan], -5, 99);
+    expect(out.length).toBe(2);
+    expect(out[0]).toBeCloseTo(0.1, 6);
+    expect(out[1]).toBeCloseTo(0.2, 6);
+  });
+
+  it("returns empty for no channels", () => {
+    expect(mixToMono([], 0, 10).length).toBe(0);
   });
 });

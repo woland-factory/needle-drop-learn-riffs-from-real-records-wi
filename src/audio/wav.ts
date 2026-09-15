@@ -1,8 +1,13 @@
-// Pure 16-bit PCM WAV decode for the fixture harness, the mirror of the writer
-// in scripts/gen-audio.mjs. No Web Audio, so tests decode a take the same way
-// the app records one. Used by unit tests only, never on a hot path.
+// Pure 16-bit PCM WAV read/write. The reader mirrors the writer in
+// scripts/gen-audio.mjs; the writer here produces the clip bytes the riff-book
+// stores, so a saved clip round-trips through the exact decode tests use.
 
 import type { Take } from "./take";
+
+interface RegionSpan {
+  startSec: number;
+  endSec: number;
+}
 
 class WavError extends Error {}
 
@@ -64,4 +69,69 @@ export function readWavPcm(bytes: Uint8Array): Take {
     out[i] = sum / channels;
   }
   return { samples: out, sampleRate };
+}
+
+function writeString(view: DataView, offset: number, s: string): void {
+  for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+}
+
+/**
+ * Encodes a mono Take as a 16-bit PCM WAV. Samples beyond [-1, 1] are clamped,
+ * never wrapped, so a hot clip can only flatten, not glitch. The output decodes
+ * back through readWavPcm within 16-bit quantization error.
+ */
+export function writeWavPcm(take: Take): ArrayBuffer {
+  const { samples, sampleRate } = take;
+  const dataLen = samples.length * 2;
+  const buf = new ArrayBuffer(44 + dataLen);
+  const view = new DataView(buf);
+  writeString(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataLen, true);
+  writeString(view, 8, "WAVE");
+  writeString(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // byte rate
+  view.setUint16(32, 2, true); // block align
+  view.setUint16(34, 16, true);
+  writeString(view, 36, "data");
+  view.setUint32(40, dataLen, true);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(44 + i * 2, Math.round(s * 32767), true);
+  }
+  return buf;
+}
+
+/**
+ * Averages multi-channel PCM into mono over [startFrame, endFrame), clamped to
+ * the shortest channel. Pure; the Web Audio touch lives in extractRegionWav.
+ */
+export function mixToMono(
+  channels: Float32Array[],
+  startFrame: number,
+  endFrame: number,
+): Float32Array {
+  if (channels.length === 0) return new Float32Array(0);
+  const frames = Math.min(...channels.map((c) => c.length));
+  const lo = Math.max(0, Math.min(Math.floor(startFrame), frames));
+  const hi = Math.max(lo, Math.min(Math.ceil(endFrame), frames));
+  const out = new Float32Array(hi - lo);
+  for (const data of channels) {
+    for (let i = lo; i < hi; i++) out[i - lo] += data[i] / channels.length;
+  }
+  return out;
+}
+
+/** Slices a region off an AudioBuffer as mono 16-bit PCM WAV bytes. */
+export function extractRegionWav(buffer: AudioBuffer, region: RegionSpan): ArrayBuffer {
+  const rate = buffer.sampleRate;
+  const channels: Float32Array[] = [];
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    channels.push(buffer.getChannelData(c));
+  }
+  const mono = mixToMono(channels, region.startSec * rate, region.endSec * rate);
+  return writeWavPcm({ samples: mono, sampleRate: rate });
 }
