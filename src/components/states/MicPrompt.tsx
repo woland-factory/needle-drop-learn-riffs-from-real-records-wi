@@ -4,6 +4,7 @@ interface MicPromptProps {
   variant: MicPromptVariant;
   onAction: () => void;
   onBack: () => void;
+  backLabel?: string;
 }
 
 const COPY: Record<
@@ -29,7 +30,12 @@ const COPY: Record<
 
 /** The designed mic permission request and its denied / unavailable variants.
  * Each states the next step, so none is a dead end. */
-export function MicPrompt({ variant, onAction, onBack }: MicPromptProps) {
+export function MicPrompt({
+  variant,
+  onAction,
+  onBack,
+  backLabel = "Back to the chart",
+}: MicPromptProps) {
   const copy = COPY[variant];
   return (
     <section className="mic-prompt" role="group" aria-label="Microphone">
@@ -40,7 +46,7 @@ export function MicPrompt({ variant, onAction, onBack }: MicPromptProps) {
           {copy.action}
         </button>
         <button type="button" className="btn btn-ghost" onClick={onBack}>
-          Back to the chart
+          {backLabel}
         </button>
       </div>
     </section>

@@ -110,11 +110,24 @@ interface HarnessProps {
   metronome: MetronomeLike;
   recorder: MicRecorder;
   gradeTake?: (take: Take, notes: Note[], tol: Tolerances) => PassResult;
-  onSave?: (notes: Note[]) => void;
+  onSave?: (notes: Note[], score: number) => Promise<void>;
   onBack?: () => void;
+  onMatched?: (score: number) => void;
+  matchedMode?: "save" | "review";
+  matchedLine?: string;
 }
 
-function Harness({ audition, metronome, recorder, gradeTake, onSave, onBack }: HarnessProps) {
+function Harness({
+  audition,
+  metronome,
+  recorder,
+  gradeTake,
+  onSave,
+  onBack,
+  onMatched,
+  matchedMode,
+  matchedLine,
+}: HarnessProps) {
   const [tol, setTol] = useState<Tolerances>(DEFAULT_TOLERANCES);
   return (
     <PracticePanel
@@ -128,8 +141,11 @@ function Harness({ audition, metronome, recorder, gradeTake, onSave, onBack }: H
       metronome={metronome}
       tolerances={tol}
       onTolerancesChange={setTol}
-      onSave={onSave ?? (() => {})}
+      onSave={onSave ?? (async () => {})}
       onBack={onBack ?? (() => {})}
+      onMatched={onMatched}
+      matchedMode={matchedMode}
+      matchedLine={matchedLine}
       gradeTake={gradeTake}
     />
   );
@@ -228,9 +244,11 @@ describe("PracticePanel verdict", () => {
     expect(screen.getByLabelText(/A2 try again/i)).toBeInTheDocument();
   });
 
-  it("confirms success and offers a real save on a matching pass", async () => {
+  it("confirms success and awaits a real save with the matched score", async () => {
     const rec = new DeferredRecorder();
-    const onSave = vi.fn();
+    const onSave = vi.fn<(notes: Note[], score: number) => Promise<void>>(
+      async () => {},
+    );
     const gradeTake = () =>
       verdict([{ noteId: "a", status: "pass", heardMidi: 40 }, { noteId: "b", status: "pass", heardMidi: 45 }], true);
     render(
@@ -241,9 +259,45 @@ describe("PracticePanel verdict", () => {
     await act(async () => rec.finish());
 
     expect(await screen.findByRole("heading", { name: /you played it/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /save to riff-book/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /save to riff-book/i }));
+    });
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave.mock.calls[0][0]).toHaveLength(2);
+    expect(onSave.mock.calls[0][1]).toBe(100);
+    expect(screen.getByText(/saved to your riff-book/i)).toBeInTheDocument();
+    // Success removes the button entirely, so a double-save cannot happen.
+    expect(screen.queryByRole("button", { name: /save to riff-book/i })).toBeNull();
+  });
+
+  it("shows the storage-blocked message on a rejecting store and retries", async () => {
+    const rec = new DeferredRecorder();
+    const onSave = vi
+      .fn<(notes: Note[], score: number) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("store-write-failed"))
+      .mockResolvedValueOnce(undefined);
+    const gradeTake = () =>
+      verdict([{ noteId: "a", status: "pass", heardMidi: 40 }, { noteId: "b", status: "pass", heardMidi: 45 }], true);
+    render(
+      <Harness audition={new FakeAudition()} metronome={new FakeMetronome()} recorder={rec} gradeTake={gradeTake} onSave={onSave} />,
+    );
+    await grantAndStart();
+    await screen.findByText(/your turn/i);
+    await act(async () => rec.finish());
+    await screen.findByRole("heading", { name: /you played it/i });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /save to riff-book/i }));
+    });
+    expect(
+      screen.getByText(/your browser blocked saving\. allow storage for this site/i),
+    ).toBeInTheDocument();
+
+    // The button stays live; a second click retries and succeeds.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /save to riff-book/i }));
+    });
+    expect(onSave).toHaveBeenCalledTimes(2);
     expect(screen.getByText(/saved to your riff-book/i)).toBeInTheDocument();
   });
 
@@ -294,5 +348,129 @@ describe("PracticePanel tolerances", () => {
     });
     expect(gradeTake).toHaveBeenCalledTimes(3);
     expect(gradeTake.mock.calls[2][2].octaveTolerant).toBe(false);
+  });
+});
+
+const MATCHED = () =>
+  verdict(
+    [
+      { noteId: "a", status: "pass", heardMidi: 40 },
+      { noteId: "b", status: "pass", heardMidi: 45 },
+    ],
+    true,
+  );
+
+describe("PracticePanel onMatched", () => {
+  it("fires once with the score when a completed cycle matches", async () => {
+    const rec = new DeferredRecorder();
+    const onMatched = vi.fn();
+    render(
+      <Harness
+        audition={new FakeAudition()}
+        metronome={new FakeMetronome()}
+        recorder={rec}
+        gradeTake={MATCHED}
+        onMatched={onMatched}
+      />,
+    );
+    await grantAndStart();
+    await screen.findByText(/your turn/i);
+    await act(async () => rec.finish());
+    await screen.findByRole("heading", { name: /you played it/i });
+    expect(onMatched).toHaveBeenCalledTimes(1);
+    expect(onMatched).toHaveBeenCalledWith(100);
+  });
+
+  it("does not fire on a failed cycle", async () => {
+    const rec = new DeferredRecorder();
+    const onMatched = vi.fn();
+    const gradeTake = () =>
+      verdict(
+        [
+          { noteId: "a", status: "pass", heardMidi: 40 },
+          { noteId: "b", status: "wrong-pitch", heardMidi: 46 },
+        ],
+        false,
+      );
+    render(
+      <Harness
+        audition={new FakeAudition()}
+        metronome={new FakeMetronome()}
+        recorder={rec}
+        gradeTake={gradeTake}
+        onMatched={onMatched}
+      />,
+    );
+    await grantAndStart();
+    await screen.findByText(/your turn/i);
+    await act(async () => rec.finish());
+    await screen.findByRole("heading", { name: /close/i });
+    expect(onMatched).not.toHaveBeenCalled();
+  });
+
+  it("never fires from the tolerance-change re-grade, even when it flips to matched", async () => {
+    const rec = new DeferredRecorder();
+    const onMatched = vi.fn();
+    const gradeTake = vi
+      .fn<(take: Take, notes: Note[], tol: Tolerances) => PassResult>()
+      .mockReturnValueOnce(
+        verdict(
+          [
+            { noteId: "a", status: "pass", heardMidi: 40 },
+            { noteId: "b", status: "wrong-pitch", heardMidi: 46 },
+          ],
+          false,
+        ),
+      )
+      .mockReturnValue(MATCHED());
+    render(
+      <Harness
+        audition={new FakeAudition()}
+        metronome={new FakeMetronome()}
+        recorder={rec}
+        gradeTake={gradeTake}
+        onMatched={onMatched}
+      />,
+    );
+    await grantAndStart();
+    await screen.findByText(/your turn/i);
+    await act(async () => rec.finish());
+    await screen.findByRole("heading", { name: /close/i });
+
+    // Loosening the tolerance re-grades the held take into a match...
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(/pitch tolerance/i), {
+        target: { value: "120" },
+      });
+    });
+    await screen.findByRole("heading", { name: /you played it/i });
+    // ...but a re-grade is not a completed cycle, so no pass is earned.
+    expect(onMatched).not.toHaveBeenCalled();
+  });
+});
+
+describe("PracticePanel review mode", () => {
+  it("hides the save button and shows the parent's line; Play it again stays", async () => {
+    const rec = new DeferredRecorder();
+    render(
+      <Harness
+        audition={new FakeAudition()}
+        metronome={new FakeMetronome()}
+        recorder={rec}
+        gradeTake={MATCHED}
+        matchedMode="review"
+        matchedLine="You still have it. Streak 2. Next review in 3 days."
+      />,
+    );
+    await grantAndStart();
+    await screen.findByText(/your turn/i);
+    await act(async () => rec.finish());
+    await screen.findByRole("heading", { name: /you played it/i });
+
+    expect(screen.queryByRole("button", { name: /save to riff-book/i })).toBeNull();
+    expect(
+      screen.getByText(/you still have it\. streak 2\. next review in 3 days\./i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /play it again/i })).toBeInTheDocument();
   });
 });

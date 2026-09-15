@@ -18,12 +18,11 @@ import {
   type Transcriber,
 } from "../audio/transcribe";
 import { WebMicRecorder, type MicRecorder } from "../audio/mic";
+import { extractRegionWav } from "../audio/wav";
+import type { NewRiff, RiffStore } from "../book/store";
 import { Metronome, type MetronomeLike } from "../audio/metronome";
-import {
-  DEFAULT_TOLERANCES,
-  clampTolerances,
-  type Tolerances,
-} from "../audio/grade";
+import type { Tolerances } from "../audio/grade";
+import { loadTolerances, saveTolerances } from "../audio/tolerance-prefs";
 import { EmptyState } from "./states/EmptyState";
 import { LoadingState } from "./states/LoadingState";
 import { ErrorState } from "./states/ErrorState";
@@ -36,17 +35,6 @@ import { PracticePanel } from "./PracticePanel";
 
 const PEAK_BUCKETS = 600;
 const SAMPLE_URL = "/sample/riff.wav";
-const TOLERANCES_KEY = "needle-drop-tolerances";
-
-function loadTolerances(): Tolerances {
-  try {
-    const raw = localStorage.getItem(TOLERANCES_KEY);
-    if (raw) return clampTolerances({ ...DEFAULT_TOLERANCES, ...JSON.parse(raw) });
-  } catch {
-    // ignore malformed or unavailable storage
-  }
-  return DEFAULT_TOLERANCES;
-}
 
 type Status = "empty" | "loading" | "loaded" | "error";
 type ChartPhase = "none" | "transcribing" | "ready" | "nopitch";
@@ -60,13 +48,15 @@ function createAudioContext(): AudioContext {
 }
 
 interface LoopRoomProps {
+  /** The riff-book ledger a matched pass saves into. */
+  store: RiffStore;
   /** Injectable for tests; defaults to the real Web Worker transcriber. */
   transcriber?: Transcriber;
   /** Injectable for tests/e2e; defaults to the real mic recorder. */
   recorder?: MicRecorder;
 }
 
-export function LoopRoom({ transcriber, recorder }: LoopRoomProps = {}) {
+export function LoopRoom({ store, transcriber, recorder }: LoopRoomProps) {
   const [status, setStatus] = useState<Status>("empty");
   const [errorKind, setErrorKind] = useState<DecodeErrorKind>("unsupported");
   const [peaks, setPeaks] = useState<Peak[]>([]);
@@ -91,7 +81,6 @@ export function LoopRoom({ transcriber, recorder }: LoopRoomProps = {}) {
   const bufferRef = useRef<AudioBuffer | null>(null);
   const auditionRef = useRef<Audition | null>(null);
   const metronomeRef = useRef<MetronomeLike | null>(null);
-  const savedRef = useRef<Note[][]>([]); // in-memory riff-book for this session
 
   const activeTranscriber = useMemo<Transcriber>(
     () => transcriber ?? new WorkerTranscriber(),
@@ -119,16 +108,39 @@ export function LoopRoom({ transcriber, recorder }: LoopRoomProps = {}) {
 
   const changeTolerances = useCallback((next: Tolerances) => {
     setTolerances(next);
-    try {
-      localStorage.setItem(TOLERANCES_KEY, JSON.stringify(next));
-    } catch {
-      // ignore unavailable storage
-    }
+    saveTolerances(next);
   }, []);
 
-  const savePhrase = useCallback((phrase: Note[]) => {
-    savedRef.current.push(phrase.map((n) => ({ ...n })));
-  }, []);
+  // Persists a matched phrase: the region audio as WAV bytes, the notes as
+  // graded, and the metadata of this loop, all in one riff-book record.
+  const savePhrase = useCallback(
+    async (phrase: Note[], score: number) => {
+      const buffer = bufferRef.current;
+      if (!buffer || !chartRegion) throw new Error("no-clip");
+      const riff: NewRiff = {
+        title: sourceName.replace(/\.[^.]+$/, "") || sourceName,
+        sourceName,
+        clipWav: extractRegionWav(buffer, chartRegion),
+        loopRegion: {
+          startSec: chartRegion.startSec,
+          endSec: chartRegion.endSec,
+          bars,
+          tempoBpm: bpm,
+          speed,
+        },
+        notes: phrase.map(({ midi, startSec, durSec, confidence, edited }) => ({
+          midi,
+          startSec,
+          durSec,
+          confidence,
+          edited,
+        })),
+        stemUsed: "mix",
+      };
+      await store.add(riff, score, Date.now());
+    },
+    [store, sourceName, chartRegion, bars, bpm, speed],
+  );
 
   const resetChart = useCallback(() => {
     auditionRef.current?.stop();
@@ -341,13 +353,10 @@ export function LoopRoom({ transcriber, recorder }: LoopRoomProps = {}) {
       Math.abs(chartRegion.endSec - region.endSec) > 1e-4);
 
   return (
-    <main className="app">
-      <header className="topbar">
-        <span className="brand">Needle Drop</span>
-        <span className="privacy" aria-label="Your audio stays on your machine">
-          <span aria-hidden="true">🔒</span> Your audio stays on your machine
-        </span>
-      </header>
+    <div className="view-stack">
+      <p className="privacy" aria-label="Your audio stays on your machine">
+        <span aria-hidden="true">🔒</span> Your audio stays on your machine
+      </p>
 
       {status === "empty" && (
         <EmptyState onFile={loadFile} onSample={loadSample} />
@@ -449,6 +458,6 @@ export function LoopRoom({ transcriber, recorder }: LoopRoomProps = {}) {
           )}
         </>
       )}
-    </main>
+    </div>
   );
 }

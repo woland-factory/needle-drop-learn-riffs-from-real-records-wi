@@ -46,11 +46,25 @@ export interface PracticePanelProps {
   metronome: MetronomeLike;
   tolerances: Tolerances;
   onTolerancesChange: (t: Tolerances) => void;
-  onSave: (notes: Note[]) => void;
+  /** Persists the matched phrase; the panel awaits it and designs the failure. */
+  onSave: (notes: Note[], score: number) => Promise<void>;
   onBack: () => void;
+  /**
+   * Fired once per completed cycle whose own grade matched. Never fired from
+   * the tolerance-change re-grade: only a completed cycle earns a pass.
+   */
+  onMatched?: (score: number) => void;
+  /** "save" offers the riff-book save; "review" shows matchedLine instead. */
+  matchedMode?: "save" | "review";
+  /** The streak confirmation the parent computed, shown in review mode. */
+  matchedLine?: string;
+  /** Label of the back action; the book passes its own. */
+  backLabel?: string;
   /** Injectable for tests; defaults to the real pure grading path. */
   gradeTake?: (take: Take, notes: Note[], tol: Tolerances) => PassResult;
 }
+
+type SaveState = "idle" | "saving" | "saved" | "error";
 
 const defaultGrade = (take: Take, notes: Note[], tol: Tolerances): PassResult =>
   gradePass(trackPitch(take), notes, tol);
@@ -68,12 +82,16 @@ export function PracticePanel({
   onTolerancesChange,
   onSave,
   onBack,
+  onMatched,
+  matchedMode = "save",
+  matchedLine,
+  backLabel = "Back to the chart",
   gradeTake = defaultGrade,
 }: PracticePanelProps) {
   const [phase, setPhase] = useState<Phase>("prompt");
   const [level, setLevel] = useState(0);
   const [result, setResult] = useState<PassResult | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
 
   // Refs so the tolerance-change re-grade never re-runs on unrelated renders.
   const cycleRef = useRef(0);
@@ -81,8 +99,13 @@ export function PracticePanel({
   const lastTakeRef = useRef<Take | null>(null);
   const phaseRef = useRef<Phase>(phase);
   const notesRef = useRef(notes);
+  const savingRef = useRef(false);
+  // Latest onMatched, read at verdict time so a cycle spanning a parent
+  // re-render still respects the parent's current once-per-session guard.
+  const onMatchedRef = useRef<typeof onMatched>(onMatched);
   phaseRef.current = phase;
   notesRef.current = notes;
+  onMatchedRef.current = onMatched;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -123,7 +146,8 @@ export function PracticePanel({
     const alive = () => mountedRef.current && cycleRef.current === token;
 
     setResult(null);
-    setSaved(false);
+    setSaveState("idle");
+    savingRef.current = false;
     setLevel(0);
 
     setPhase("countin");
@@ -152,6 +176,9 @@ export function PracticePanel({
     if (!alive()) return;
     setResult(res);
     setPhase("verdict");
+    // A completed cycle whose own grade matched earns a pass. The tolerance
+    // re-grade effect below never fires this.
+    if (res.matched) onMatchedRef.current?.(res.score);
   }
 
   // Re-grade a held take when the tolerances change, so the player sees the
@@ -159,7 +186,8 @@ export function PracticePanel({
   useEffect(() => {
     if (phaseRef.current === "verdict" && lastTakeRef.current) {
       setResult(gradeTake(lastTakeRef.current, notesRef.current, tolerances));
-      setSaved(false);
+      setSaveState("idle");
+      savingRef.current = false;
     }
     // Intentionally keyed on tolerances only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -175,9 +203,18 @@ export function PracticePanel({
     setPhase("ready");
   }
 
-  function handleSave() {
-    onSave(notes);
-    setSaved(true);
+  async function handleSave() {
+    const res = result;
+    if (!res || !res.matched || savingRef.current) return;
+    savingRef.current = true;
+    setSaveState("saving");
+    try {
+      await onSave(notesRef.current, res.score);
+      if (mountedRef.current) setSaveState("saved");
+    } catch {
+      savingRef.current = false;
+      if (mountedRef.current) setSaveState("error");
+    }
   }
 
   function handleBack() {
@@ -196,7 +233,12 @@ export function PracticePanel({
   return (
     <section className="practice card" aria-label="Check your take">
       {(phase === "prompt" || phase === "denied" || phase === "unavailable") && (
-        <MicPrompt variant={phase} onAction={() => void requestMic()} onBack={handleBack} />
+        <MicPrompt
+          variant={phase}
+          onAction={() => void requestMic()}
+          onBack={handleBack}
+          backLabel={backLabel}
+        />
       )}
 
       {phase === "ready" && (
@@ -211,7 +253,7 @@ export function PracticePanel({
           <TargetRoll notes={notes} regionLen={regionLen} />
           <ToleranceControls tolerances={tolerances} onChange={changeTol} />
           <button type="button" className="btn btn-ghost" onClick={handleBack}>
-            Back to the chart
+            {backLabel}
           </button>
         </div>
       )}
@@ -276,13 +318,24 @@ export function PracticePanel({
           <div className="verdict-actions">
             {result.matched ? (
               <>
-                {saved ? (
+                {matchedMode === "review" ? (
+                  matchedLine && (
+                    <p className="verdict-saved" role="status">
+                      {matchedLine}
+                    </p>
+                  )
+                ) : saveState === "saved" ? (
                   <p className="verdict-saved" role="status">
                     Saved to your riff-book.
                   </p>
                 ) : (
-                  <button type="button" className="btn btn-primary" onClick={handleSave}>
-                    Save to riff-book
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={saveState === "saving"}
+                    onClick={() => void handleSave()}
+                  >
+                    {saveState === "saving" ? "Saving" : "Save to riff-book"}
                   </button>
                 )}
                 <button type="button" className="btn" onClick={handleStart}>
@@ -305,9 +358,16 @@ export function PracticePanel({
             )}
           </div>
 
+          {matchedMode === "save" && saveState === "error" && (
+            <p className="save-error" role="status">
+              Your browser blocked saving. Allow storage for this site, then try
+              again.
+            </p>
+          )}
+
           <ToleranceControls tolerances={tolerances} onChange={changeTol} />
           <button type="button" className="btn btn-ghost" onClick={handleBack}>
-            Back to the chart
+            {backLabel}
           </button>
         </div>
       )}
