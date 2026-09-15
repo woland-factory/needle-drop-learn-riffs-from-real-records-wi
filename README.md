@@ -23,6 +23,11 @@ timing window, and octave matching are all adjustable, with generous defaults.
 Your audio never leaves the machine: the mic take is analyzed locally and thrown
 away after each pass.
 
+Every phrase you nail lands in your riff-book, stored on your machine with the
+clip, the notes as graded, your best score, and a mastery streak. Each phrase
+resurfaces when it is due for review: play it back to keep the streak growing.
+One button exports the whole book, clips included, to a single JSON file.
+
 ## Run it
 
 You need [Node.js 22](https://nodejs.org) (see `.nvmrc`).
@@ -78,6 +83,10 @@ so for local use prefer the `docker run` command above.
   slightly late start is not punished, and a take with no clear line never
   passes. The same pure code grades a live mic take and the accuracy test
   fixtures, so the verdict is measured, not asserted.
+- The riff-book lives in IndexedDB on your machine: one record per phrase with
+  the clip bytes inside, so a delete removes everything at once. Review timing
+  is a small pure function of the stored record and the clock; time changes
+  what is due, never what is stored. There is no account and no sync.
 
 ## Contribute
 
@@ -85,10 +94,11 @@ so for local use prefer the `docker run` command above.
   loop player, and the transcription path (the `transcribe` worker, the
   monophonic reduction, pitch helpers, and note synth), plus the mic verdict core
   (`pitch-detect`, `pitch-track`, `grade`, `wav`, `metronome`, and the `mic`
-  capture boundary). `components/` holds the Loop Room UI, the chart panel and
-  piano roll, the practice panel, and the empty, loading, error, transcribing,
-  no-clear-pitch, and mic prompt states. `observability/` wires optional Sentry
-  and Umami. The Basic Pitch model weights live in `public/models/basic-pitch/`
+  capture boundary). `book/` holds the riff-book: the IndexedDB store, the
+  spaced-repetition schedule, and the JSON export serializer. `components/`
+  holds the Loop Room UI, the chart panel and piano roll, the practice panel,
+  the riff-book screen and re-practice surface, and the designed states.
+  `observability/` wires optional Sentry and Umami. The Basic Pitch model weights live in `public/models/basic-pitch/`
   so they are served from the app's own origin.
 - `npm test` includes the accuracy fixture harness
   (`tests/unit/accuracy.test.ts`), which feeds a battery of synthesized takes
