@@ -108,8 +108,12 @@ function gradeNote(
   offsetSec: number,
   tol: Tolerances,
 ): NoteGrade {
-  const coreLo = note.startSec + EDGE_TRIM * note.durSec;
-  const coreHi = note.startSec + note.durSec - EDGE_TRIM * note.durSec;
+  // The timing window widens the per-note gather symmetrically, so a note the
+  // player places a little early or late still lands inside its own span. A
+  // wider window forgives looser timing; a window of zero grades only the tight
+  // trimmed core. This is the control the practice panel exposes.
+  const coreLo = note.startSec + EDGE_TRIM * note.durSec - tol.timingWindowSec;
+  const coreHi = note.startSec + note.durSec - EDGE_TRIM * note.durSec + tol.timingWindowSec;
   let total = 0;
   const voiced: number[] = [];
   for (const f of frames) {

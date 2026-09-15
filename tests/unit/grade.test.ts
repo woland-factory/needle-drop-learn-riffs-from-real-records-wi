@@ -93,6 +93,29 @@ describe("gradePass", () => {
     expect(gradePass(frames, target, { ...DEFAULT_TOLERANCES, cents: 90 }).matched).toBe(true);
   });
 
+  it("changing only the timing window flips a borderline take's grade", () => {
+    // Notes spaced far apart so the window never straddles a neighbor. The first
+    // note is dragged late and the last is rushed early by the same amount, so no
+    // single global offset can align both. Only a wider per-note timing window
+    // gives each note the local slack it needs.
+    const spaced = [
+      { midi: 40, startSec: 0.0, durSec: 0.4 },
+      { midi: 45, startSec: 1.2, durSec: 0.4 },
+      { midi: 47, startSec: 2.4, durSec: 0.4 },
+    ];
+    const target = makeTarget(spaced);
+    const desync = 0.24;
+    const played = [
+      { ...spaced[0], startSec: spaced[0].startSec + desync },
+      spaced[1],
+      { ...spaced[2], startSec: spaced[2].startSec - desync },
+    ];
+    const frames = trackPitch(synthTake(played, SR, () => ({}), 3.0));
+    // Only timingWindowSec changes between these two calls.
+    expect(gradePass(frames, target, { ...DEFAULT_TOLERANCES, timingWindowSec: 0 }).matched).toBe(false);
+    expect(gradePass(frames, target, { ...DEFAULT_TOLERANCES, timingWindowSec: 0.2 }).matched).toBe(true);
+  });
+
   it("tolerates an empty pitch track without throwing", () => {
     const target = makeTarget(PHRASE);
     const res = gradePass([], target, DEFAULT_TOLERANCES);
