@@ -7,7 +7,7 @@ import { Audition, type AuditionLike } from "../audio/note-synth";
 import { Metronome, type MetronomeLike } from "../audio/metronome";
 import type { Tolerances } from "../audio/grade";
 import { loadTolerances, saveTolerances } from "../audio/tolerance-prefs";
-import { PracticePanel } from "./PracticePanel";
+import { PracticePanel, type PracticePanelProps } from "./PracticePanel";
 
 interface RiffPracticeProps {
   record: RiffRecord;
@@ -19,6 +19,8 @@ interface RiffPracticeProps {
   audition?: AuditionLike;
   metronome?: MetronomeLike;
   decodeClip?: (wav: ArrayBuffer) => Promise<AudioBuffer>;
+  /** Injectable grading, forwarded to the panel; defaults to the real path. */
+  gradeTake?: PracticePanelProps["gradeTake"];
   onBack: () => void;
 }
 
@@ -43,6 +45,7 @@ export function RiffPractice({
   audition,
   metronome,
   decodeClip,
+  gradeTake,
   onBack,
 }: RiffPracticeProps) {
   const [clip, setClip] = useState<AudioBuffer | null>(null);
@@ -176,6 +179,7 @@ export function RiffPractice({
         matchedMode="review"
         matchedLine={line}
         backLabel="Back to your book"
+        gradeTake={gradeTake}
         onBack={onBack}
       />
     </div>
