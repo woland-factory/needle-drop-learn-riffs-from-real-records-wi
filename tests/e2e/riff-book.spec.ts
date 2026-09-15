@@ -99,6 +99,11 @@ test("conquer, save, reload, re-practice, export, delete", async ({ page }) => {
   });
   await expect(page.getByText(/you still have it\. streak 2\./i)).toBeVisible();
 
+  // The re-practice surface also fits the 390px viewport.
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBe(true);
+
   // Back in the book the streak reads 2.
   await page.getByRole("button", { name: /back to your book/i }).click();
   await expect(page.getByText(/streak 2/i)).toBeVisible();
@@ -115,7 +120,13 @@ test("conquer, save, reload, re-practice, export, delete", async ({ page }) => {
   expect(book.riffs).toHaveLength(1);
   expect(book.riffs[0].title).toBe("sample-loop");
   expect(book.riffs[0].streak).toBe(2);
+  expect(book.riffs[0].stemUsed).toBe("mix");
+  expect(book.riffs[0].loopRegion.tempoBpm).toBe(120);
+  expect(book.riffs[0].loopRegion.bars).toBe(2);
+  expect(book.riffs[0].loopRegion.speed).toBe(1);
   expect(book.riffs[0].notes.length).toBeGreaterThan(0);
+  expect(book.riffs[0].notes[0].midi).toBeGreaterThan(0);
+  expect(book.riffs[0].notes[0]).not.toHaveProperty("id");
   expect(book.riffs[0].clipWavBase64.length).toBeGreaterThan(1000);
   expect(Buffer.from(book.riffs[0].clipWavBase64, "base64").subarray(0, 4).toString()).toBe(
     "RIFF",

@@ -19,7 +19,8 @@ import {
 } from "../audio/transcribe";
 import { WebMicRecorder, type MicRecorder } from "../audio/mic";
 import { extractRegionWav } from "../audio/wav";
-import type { NewRiff, RiffStore } from "../book/store";
+import { buildNewRiff } from "../book/new-riff";
+import type { RiffStore } from "../book/store";
 import { Metronome, type MetronomeLike } from "../audio/metronome";
 import type { Tolerances } from "../audio/grade";
 import { loadTolerances, saveTolerances } from "../audio/tolerance-prefs";
@@ -117,26 +118,15 @@ export function LoopRoom({ store, transcriber, recorder }: LoopRoomProps) {
     async (phrase: Note[], score: number) => {
       const buffer = bufferRef.current;
       if (!buffer || !chartRegion) throw new Error("no-clip");
-      const riff: NewRiff = {
-        title: sourceName.replace(/\.[^.]+$/, "") || sourceName,
+      const riff = buildNewRiff(phrase, {
         sourceName,
         clipWav: extractRegionWav(buffer, chartRegion),
-        loopRegion: {
-          startSec: chartRegion.startSec,
-          endSec: chartRegion.endSec,
-          bars,
-          tempoBpm: bpm,
-          speed,
-        },
-        notes: phrase.map(({ midi, startSec, durSec, confidence, edited }) => ({
-          midi,
-          startSec,
-          durSec,
-          confidence,
-          edited,
-        })),
-        stemUsed: "mix",
-      };
+        startSec: chartRegion.startSec,
+        endSec: chartRegion.endSec,
+        bars,
+        tempoBpm: bpm,
+        speed,
+      });
       await store.add(riff, score, Date.now());
     },
     [store, sourceName, chartRegion, bars, bpm, speed],
